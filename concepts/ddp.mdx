@@ -1,0 +1,755 @@
+---
+title: DDP - Distributed Data Protocol
+description: Understanding Meteor's real-time data synchronization protocol
+---
+
+## What is DDP?
+
+DDP (Distributed Data Protocol) is Meteor's protocol for syncing data between client and server. It's a simple, REST-like protocol for fetching structured data from a server, and receiving live updates when that data changes.
+
+<Note>
+  DDP is to realtime web apps what REST is to traditional web apps - a standardized way to send data over the network.
+</Note>
+
+## Package Structure
+
+DDP is implemented across three core packages:
+
+<CardGroup cols={3}>
+  <Card title="ddp" icon="box">
+    Main package that combines client and server
+    ```javascript
+    import { DDP } from 'meteor/ddp';
+    ```
+  </Card>
+  
+  <Card title="ddp-client" icon="laptop">
+    Client-side DDP implementation
+    ```javascript
+    import { DDP } from 'meteor/ddp-client';
+    ```
+  </Card>
+  
+  <Card title="ddp-server" icon="server">
+    Server-side DDP implementation (server-only)
+  </Card>
+</CardGroup>
+
+### Package Dependencies
+
+From `packages/ddp/package.js`:
+
+```javascript
+Package.describe({
+  summary: "Meteor's latency-compensated distributed data framework",
+  version: '1.4.2',
+});
+
+Package.onUse(function (api) {
+  api.use(['ddp-client'], ['client', 'server']);
+  api.use(['ddp-server'], 'server');
+
+  api.export('DDP');
+  api.export('DDPServer', 'server');
+
+  api.imply('ddp-client');
+  api.imply('ddp-server');
+});
+```
+
+### ddp-common Package
+
+Shared code between client and server:
+
+```javascript packages/ddp-common/package.js
+Package.describe({
+  summary: "Code shared between ddp-client and ddp-server",
+  version: "1.4.4",
+});
+
+Package.onUse(function (api) {
+  api.use([
+    "check", 
+    "random", 
+    "ecmascript", 
+    "ejson", 
+    "tracker", 
+    "retry"
+  ]);
+
+  api.addFiles("namespace.js");
+  api.addFiles("heartbeat.js");
+  api.addFiles("utils.js");
+  api.addFiles("method_invocation.js");
+  api.addFiles("random_stream.js");
+
+  api.export("DDPCommon");
+});
+```
+
+## Core Concepts
+
+### The Connection
+
+A DDP connection is established via WebSocket:
+
+```javascript
+import { DDP } from 'meteor/ddp-client';
+
+// Connect to a Meteor server
+const connection = DDP.connect('http://localhost:3000');
+
+// Use the connection
+const RemoteCollection = new Mongo.Collection('items', { 
+  connection 
+});
+```
+
+### Connection Implementation
+
+From `packages/ddp-client/common/livedata_connection.js`:
+
+```javascript
+export class Connection {
+  constructor(url, options) {
+    this.options = {
+      onConnected() {},
+      onDDPVersionNegotiationFailure(description) {
+        Meteor._debug(description);
+      },
+      heartbeatInterval: 17500,
+      heartbeatTimeout: 15000,
+      npmFayeOptions: Object.create(null),
+      reloadWithOutstanding: false,
+      supportedDDPVersions: DDPCommon.SUPPORTED_DDP_VERSIONS,
+      retry: true,
+      respondToPings: true,
+      bufferedWritesInterval: 5,
+      bufferedWritesMaxAge: 500,
+      ...options
+    };
+
+    // Create WebSocket stream
+    const { ClientStream } = require("meteor/socket-stream-client");
+    this._stream = new ClientStream(url, {
+      retry: options.retry,
+      ConnectionError: DDP.ConnectionError,
+      headers: options.headers,
+      _sockjsOptions: options._sockjsOptions,
+      _dontPrintErrors: options._dontPrintErrors,
+      connectTimeoutMs: options.connectTimeoutMs,
+      npmFayeOptions: options.npmFayeOptions
+    });
+
+    this._lastSessionId = null;
+    this._versionSuggestion = null;
+    this._version = null;
+    this._stores = Object.create(null);
+    this._methodHandlers = Object.create(null);
+    this._nextMethodId = 1;
+    // ...
+  }
+}
+```
+
+## DDP Messages
+
+DDP uses JSON messages over WebSocket. Here are the core message types:
+
+### Connection Messages
+
+<AccordionGroup>
+  <Accordion title="connect - Establish Connection">
+    Client initiates connection:
+    
+    ```json
+    {
+      "msg": "connect",
+      "version": "1",
+      "support": ["1", "pre2", "pre1"]
+    }
+    ```
+    
+    Server responds:
+    ```json
+    {
+      "msg": "connected",
+      "session": "session-id-string"
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="ping/pong - Heartbeat">
+    Keep connection alive:
+    
+    ```json
+    { "msg": "ping" }
+    ```
+    
+    ```json
+    { "msg": "pong" }
+    ```
+    
+    With IDs:
+    ```json
+    { "msg": "ping", "id": "unique-id" }
+    { "msg": "pong", "id": "unique-id" }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Method Messages
+
+<AccordionGroup>
+  <Accordion title="method - Call Server Method">
+    Client calls method:
+    
+    ```json
+    {
+      "msg": "method",
+      "method": "tasks.insert",
+      "params": ["Buy groceries"],
+      "id": "1"
+    }
+    ```
+    
+    Server responds with result:
+    ```json
+    {
+      "msg": "result",
+      "id": "1",
+      "result": "task-id-123"
+    }
+    ```
+    
+    Or with error:
+    ```json
+    {
+      "msg": "result",
+      "id": "1",
+      "error": {
+        "error": "not-authorized",
+        "reason": "You must be logged in",
+        "message": "You must be logged in [not-authorized]"
+      }
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="updated - Method Complete">
+    Server signals method side effects are complete:
+    
+    ```json
+    {
+      "msg": "updated",
+      "methods": ["1"]
+    }
+    ```
+    
+    This means all database changes from method "1" have been sent to the client.
+  </Accordion>
+</AccordionGroup>
+
+### Subscription Messages
+
+<AccordionGroup>
+  <Accordion title="sub - Subscribe to Data">
+    Client subscribes:
+    
+    ```json
+    {
+      "msg": "sub",
+      "id": "sub-1",
+      "name": "tasks",
+      "params": [{ "completed": false }]
+    }
+    ```
+    
+    Server sends initial data via `added` messages, then:
+    ```json
+    {
+      "msg": "ready",
+      "subs": ["sub-1"]
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="unsub - Unsubscribe">
+    Client unsubscribes:
+    
+    ```json
+    {
+      "msg": "unsub",
+      "id": "sub-1"
+    }
+    ```
+    
+    Server confirms:
+    ```json
+    {
+      "msg": "nosub",
+      "id": "sub-1"
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Data Messages
+
+<AccordionGroup>
+  <Accordion title="added - Document Added">
+    Server tells client about new document:
+    
+    ```json
+    {
+      "msg": "added",
+      "collection": "tasks",
+      "id": "task-1",
+      "fields": {
+        "text": "Buy groceries",
+        "completed": false,
+        "createdAt": { "$date": 1638360000000 }
+      }
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="changed - Document Updated">
+    Server tells client about changes:
+    
+    ```json
+    {
+      "msg": "changed",
+      "collection": "tasks",
+      "id": "task-1",
+      "fields": {
+        "completed": true
+      }
+    }
+    ```
+    
+    With removed fields:
+    ```json
+    {
+      "msg": "changed",
+      "collection": "tasks",
+      "id": "task-1",
+      "fields": { "text": "Updated text" },
+      "cleared": ["dueDate"]
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="removed - Document Deleted">
+    Server tells client document was removed:
+    
+    ```json
+    {
+      "msg": "removed",
+      "collection": "tasks",
+      "id": "task-1"
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Publications and Subscriptions
+
+### Server: Publications
+
+Define what data clients can subscribe to:
+
+```javascript
+import { Meteor } from 'meteor/meteor';
+import { Tasks } from '/imports/api/tasks';
+
+// Publish all tasks for current user
+Meteor.publish('tasks', function() {
+  if (!this.userId) {
+    return this.ready();
+  }
+  
+  return Tasks.find({ userId: this.userId });
+});
+
+// Publish with parameters
+Meteor.publish('tasks.filtered', function(completed) {
+  if (!this.userId) {
+    return this.ready();
+  }
+  
+  return Tasks.find({
+    userId: this.userId,
+    completed: completed
+  });
+});
+
+// Custom publication
+Meteor.publish('tasks.count', function() {
+  let count = 0;
+  const handle = Tasks.find({ userId: this.userId }).observeChanges({
+    added: (id) => {
+      count++;
+      this.changed('counts', this.userId, { tasks: count });
+    },
+    removed: (id) => {
+      count--;
+      this.changed('counts', this.userId, { tasks: count });
+    }
+  });
+  
+  this.added('counts', this.userId, { tasks: count });
+  this.ready();
+  
+  this.onStop(() => handle.stop());
+});
+```
+
+### Client: Subscriptions
+
+Subscribe to published data:
+
+```javascript
+import { Meteor } from 'meteor/meteor';
+import { Tasks } from '/imports/api/tasks';
+
+// Simple subscription
+Meteor.subscribe('tasks');
+
+// With parameters
+Meteor.subscribe('tasks.filtered', false);
+
+// With callback
+Meteor.subscribe('tasks', {
+  onReady() {
+    console.log('Subscription ready');
+  },
+  onStop(error) {
+    if (error) {
+      console.error('Subscription stopped with error:', error);
+    }
+  }
+});
+
+// Store handle to stop later
+const handle = Meteor.subscribe('tasks');
+
+// Check if ready
+if (handle.ready()) {
+  console.log('Data loaded');
+}
+
+// Stop subscription
+handle.stop();
+```
+
+### React Integration
+
+```javascript
+import { useSubscribe, useFind } from 'meteor/react-meteor-data';
+import { Tasks } from '/imports/api/tasks';
+
+function TaskList() {
+  const isLoading = useSubscribe('tasks');
+  const tasks = useFind(() => Tasks.find({ completed: false }));
+  
+  if (isLoading()) {
+    return <div>Loading...</div>;
+  }
+  
+  return (
+    <ul>
+      {tasks.map(task => (
+        <li key={task._id}>{task.text}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+## Methods (RPC)
+
+### Server: Define Methods
+
+```javascript
+import { Meteor } from 'meteor/meteor';
+import { check } from 'meteor/check';
+import { Tasks } from '/imports/api/tasks';
+
+Meteor.methods({
+  'tasks.insert'(text) {
+    check(text, String);
+    
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized');
+    }
+    
+    return Tasks.insert({
+      text,
+      completed: false,
+      createdAt: new Date(),
+      userId: this.userId
+    });
+  },
+  
+  'tasks.setCompleted'(taskId, completed) {
+    check(taskId, String);
+    check(completed, Boolean);
+    
+    const task = Tasks.findOne(taskId);
+    if (task.userId !== this.userId) {
+      throw new Meteor.Error('not-authorized');
+    }
+    
+    Tasks.update(taskId, {
+      $set: { completed }
+    });
+  },
+  
+  async 'tasks.importFromAPI'(apiUrl) {
+    // Async methods supported in Meteor 3.x
+    const response = await fetch(apiUrl);
+    const data = await response.json();
+    
+    return Tasks.insertMany(data.tasks);
+  }
+});
+```
+
+### Client: Call Methods
+
+```javascript
+import { Meteor } from 'meteor/meteor';
+
+// Callback style
+Meteor.call('tasks.insert', 'Buy milk', (error, result) => {
+  if (error) {
+    console.error('Error:', error);
+  } else {
+    console.log('Task ID:', result);
+  }
+});
+
+// Promise style (Meteor 3.x)
+try {
+  const taskId = await Meteor.callAsync('tasks.insert', 'Buy milk');
+  console.log('Task ID:', taskId);
+} catch (error) {
+  console.error('Error:', error);
+}
+
+// Without waiting for result
+Meteor.call('tasks.logActivity', 'viewed-list');
+```
+
+## Latency Compensation
+
+DDP implements optimistic UI through latency compensation:
+
+```javascript
+// 1. User clicks button
+handleClick() {
+  // 2. Method runs in simulation on client
+  //    (updates Minimongo immediately)
+  Meteor.call('tasks.setCompleted', taskId, true);
+  
+  // 3. UI updates instantly (optimistic)
+  //    User sees completed task immediately
+  
+  // 4. Method sent to server
+  // 5. Server executes method
+  // 6. Server sends result + data changes
+  // 7. Client reconciles:
+  //    - If server result matches simulation: no flicker
+  //    - If different: UI updates to server state
+}
+```
+
+### Stub Functions
+
+Define client-side simulation:
+
+```javascript
+// Shared method definition (imports/api/tasks.js)
+import { Meteor } from 'meteor/meteor';
+import { Tasks } from './collections';
+
+Meteor.methods({
+  'tasks.insert'(text) {
+    // Runs on both client (simulation) and server
+    return Tasks.insert({
+      text,
+      completed: false,
+      createdAt: new Date(),
+      userId: Meteor.userId()
+    });
+  }
+});
+
+// Import on both client and server
+// Client gets simulation, server gets real execution
+```
+
+## Connection Management
+
+### Connection States
+
+```javascript
+import { Meteor } from 'meteor/meteor';
+import { Tracker } from 'meteor/tracker';
+
+Tracker.autorun(() => {
+  const status = Meteor.status();
+  
+  console.log('Connected:', status.connected);
+  console.log('Status:', status.status);
+  // Status can be: 'connected', 'connecting', 'failed', 'waiting', 'offline'
+  
+  if (status.retryCount > 0) {
+    console.log('Retry count:', status.retryCount);
+    console.log('Retry time:', status.retryTime);
+  }
+});
+```
+
+### Manual Connection Control
+
+```javascript
+// Disconnect
+Meteor.disconnect();
+
+// Reconnect
+Meteor.reconnect();
+
+// Connection callbacks
+Meteor.onConnection((connection) => {
+  console.log('New connection:', connection.id);
+});
+```
+
+## Advanced Features
+
+### Multiple DDP Connections
+
+```javascript
+import { DDP } from 'meteor/ddp-client';
+
+// Connect to external Meteor server
+const externalConnection = DDP.connect('https://external.meteor.app');
+
+// Use external collections
+const ExternalData = new Mongo.Collection('data', {
+  connection: externalConnection
+});
+
+// Call methods on external server
+externalConnection.call('externalMethod', (error, result) => {
+  console.log(result);
+});
+
+// Subscribe to external publications
+externalConnection.subscribe('externalPub');
+```
+
+### DDP Rate Limiting
+
+```javascript
+import { DDPRateLimiter } from 'meteor/ddp-rate-limiter';
+
+// Limit method calls
+DDPRateLimiter.addRule({
+  type: 'method',
+  name: 'tasks.insert',
+  userId(userId) {
+    return true;  // Apply to all users
+  }
+}, 5, 1000);  // 5 calls per 1000ms
+
+// Limit subscriptions
+DDPRateLimiter.addRule({
+  type: 'subscription',
+  name: 'tasks'
+}, 10, 60000);  // 10 subscriptions per minute
+```
+
+### Custom DDP Messages
+
+```javascript
+// Server: Send custom message
+Meteor.publish('customData', function() {
+  this.added('customCollection', 'id-1', { 
+    data: 'custom' 
+  });
+  this.ready();
+});
+
+// Client: Receive custom message
+const CustomCollection = new Mongo.Collection('customCollection');
+Meteor.subscribe('customData');
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Secure Publications">
+    Never trust the client - always validate on server:
+    
+    ```javascript
+    // Bad - publishes all data
+    Meteor.publish('tasks', function() {
+      return Tasks.find();
+    });
+    
+    // Good - filters by user
+    Meteor.publish('tasks', function() {
+      if (!this.userId) return this.ready();
+      return Tasks.find({ userId: this.userId });
+    });
+    ```
+  </Accordion>
+  
+  <Accordion title="Validate Method Arguments">
+    Use `check` package:
+    
+    ```javascript
+    import { check, Match } from 'meteor/check';
+    
+    Meteor.methods({
+      'tasks.update'(taskId, updates) {
+        check(taskId, String);
+        check(updates, {
+          text: Match.Optional(String),
+          completed: Match.Optional(Boolean)
+        });
+        
+        // Safe to proceed
+      }
+    });
+    ```
+  </Accordion>
+  
+  <Accordion title="Optimize Subscriptions">
+    Only subscribe to data you need:
+    
+    ```javascript
+    // Limit fields
+    Meteor.publish('tasks.light', function() {
+      return Tasks.find({}, {
+        fields: { text: 1, completed: 1 }
+      });
+    });
+    
+    // Limit documents
+    Meteor.publish('tasks.recent', function() {
+      return Tasks.find({}, {
+        sort: { createdAt: -1 },
+        limit: 20
+      });
+    });
+    ```
+  </Accordion>
+</AccordionGroup>
+
+<Card title="Next: Full-Stack Development" icon="layer-group" href="/concepts/full-stack">
+  Learn how to build complete full-stack applications with Meteor
+</Card>

@@ -1,0 +1,384 @@
+---
+title: Build Performance
+description: Performance optimization strategies for Meteor builds
+---
+
+# Build Performance Optimization
+
+This guide covers performance considerations and optimization strategies for the Meteor build system.
+
+## Profiling
+
+### Standard Profiler
+
+The built-in profiler is activated with the `METEOR_PROFILE` environment variable:
+
+```bash
+# Report calls taking more than 1ms
+METEOR_PROFILE=1 meteor build ./output
+
+# Higher threshold for less noise
+METEOR_PROFILE=100 meteor run
+```
+
+From PERFORMANCE.md:
+
+> The value is interpreted as a threshold in ms, so the value `1` means to report on all calls that take more than 1ms.
+
+#### Example Output
+
+```
+| (#1) Profiling: ProjectContext prepareProjectForBuild
+| ProjectContext prepareProjectForBuild..........9,207 ms (1)
+|    _initializeCatalog.............................24 ms (1)
+|       files.readFile                               7 ms (2)
+|       runJavaScript package.js                     2 ms (1)
+|       files.rm_recursive                           4 ms (4)
+|       other _initializeCatalog                    11 ms
+|    _resolveConstraints.........................6,702 ms (1)
+|       bundler.readJsImage.........................42 ms (1)
+...
+| (#1) Total: 9,544 ms (ProjectContext prepareProjectForBuild)
+```
+
+### Inspector Profiling
+
+For detailed performance analysis, use inspector profiling:
+
+```bash
+# Profile specific functions
+METEOR_INSPECT=bundler.bundle,compiler.compile meteor build ./output
+
+# Additional configuration
+METEOR_INSPECT_CONTEXT=my_project \
+METEOR_INSPECT_OUTPUT=/path/to/profiles \
+METEOR_INSPECT_INTERVAL=500 \
+METEOR_INSPECT_MAX_SIZE=1000 \
+meteor build ./output
+```
+
+#### Available Inspection Points
+
+From PERFORMANCE.md:
+
+- `bundler.bundle`
+- `compiler.compile`
+- `Babel.compile`
+- `_readProjectMetadata`
+- `initializeCatalog`
+- `_downloadMissingPackages`
+- `_saveChangeMetadata`
+- `_realpath`
+- `package-client`
+
+#### Environment Variables
+
+```bash
+# Profile output directory (default: ./profiling)
+METEOR_INSPECT_OUTPUT=/path/to/directory
+
+# Identifier for profile files
+METEOR_INSPECT_CONTEXT=context_name
+
+# Sampling interval in ms (lower = more detail, more memory)
+METEOR_INSPECT_INTERVAL=500
+
+# Maximum profile size in MB (default: 2000)
+METEOR_INSPECT_MAX_SIZE=1000
+
+# Increase Node memory for large profiles
+NODE_OPTIONS="--max-old-space-size=4096" \
+METEOR_INSPECT=bundler.bundle meteor build ./output
+```
+
+#### Viewing Results
+
+**Chrome DevTools:**
+1. Open Chrome DevTools
+2. Go to Performance or Profiler tab
+3. Click "Load Profile" and select the .cpuprofile file
+
+**cpupro (Open Source):**
+1. Visit https://discoveryjs.github.io/cpupro/
+2. Drag and drop your .cpuprofile file
+3. Use interactive visualization tools
+
+## Instrumenting Code
+
+Add profiling annotations to tool code:
+
+```javascript
+// Profile a function
+var doIt = Profile("doIt", function (...) {
+  ...
+});
+
+// Wrap a method
+MyClass.prototype.doIt = 
+  Profile("MyClass doIt", MyClass.prototype.doIt);
+
+// Time a block
+function doIt() {
+  var result = Profile.time("doIt", () => {
+    // expensive operation
+  });
+  return result;
+}
+```
+
+From bundler.js:
+
+```javascript
+// Methods are automatically profiled
+[
+  'make',
+  '_runCompilerPlugins',
+  '_emitResources',
+  'minifyJs',
+  'rewriteSourceMaps',
+].forEach((method) => {
+  Target.prototype[method] = Profile(
+    `Target#${method}`, 
+    Target.prototype[method]
+  );
+});
+```
+
+## Performance Considerations
+
+### Caching
+
+The tool uses multiple cache layers:
+
+**Package Caches:**
+- `APP/.meteor/local/isopacks` - Built packages
+- `APP/.meteor/local/bundler-cache` - Bundler output
+- `APP/.meteor/local/plugin-cache` - Plugin compilation
+- `~/.meteor/packages/` - Downloaded packages
+
+**In-Memory Caches:**
+- Compiler plugin results (with source file versioning)
+- Linker output
+- Server program (for client-only changes)
+- Constraint solver results
+
+From PERFORMANCE.md:
+
+> The tool saves work using various disk caches and in-memory caches... Compiler plugin results - and not just on the most recent version of a file! If you are testing rebuilds by toggling a character back and forth, you may hit cache.
+
+### Linker Cache
+
+From compiler-plugin.js:
+
+```javascript
+const CACHE_SIZE = process.env.METEOR_LINKER_CACHE_SIZE || 1024*1024*100;
+const LINKER_CACHE_SALT = 26; // Increment to force relinking
+
+const LINKER_CACHE = new LRUCache({
+  max: CACHE_SIZE,
+  length(files) {
+    return files.reduce((soFar, current) => {
+      return soFar + current.data.length + sourceMapLength(current.sourceMap);
+    }, 0);
+  }
+});
+```
+
+Set custom cache size:
+
+```bash
+METEOR_LINKER_CACHE_SIZE=209715200 meteor run  # 200MB
+```
+
+### Release vs. Checkout
+
+From PERFORMANCE.md:
+
+**Released Meteor:**
+- Uses pre-built packages from `~/.meteor`
+- Faster startup and rebuilds
+- No core package compilation
+
+**Checked-Out Meteor:**
+- Recompiles core packages into `APP/.meteor/local/isopacks`
+- Takes longer on first run (up to a couple minutes)
+- More files to watch (slower rebuild preparation)
+- Different constraint solver behavior
+
+> Checked-out Meteor recompiles core packages. When you run an app using checked-out Meteor, it will compile core packages into `APP/.meteor/local/isopacks`... This process can take a while -- as much as a couple minutes -- but it's only done once per package per app.
+
+### Hardware Impact
+
+From PERFORMANCE.md:
+
+**Storage:**
+> Spinning disks are much slower than SSDs.
+
+**Operating System:**
+- **macOS/Linux:** Fast symlinks, atomic renames, files can be deleted while open
+- **Windows:** Rename is copy operation, path separator differences, virus scanners can delay operations
+
+> Windows doesn't have these properties; for example, renaming a file is a copy operation.
+
+## Known Performance Issues
+
+### CSS Minification
+
+From PERFORMANCE.md:
+
+> Reparsing and merging the CSS for a typical app can take anywhere from 500ms to a couple seconds or more, depending on the amount of CSS.
+
+Potential improvements:
+- Cache parsing results
+- Only recalculate when CSS changes  
+- Use faster CSS library
+
+### Source Maps
+
+> The tool spends noticeable [time] building source maps... There's some question of whether the `source-map` library is as efficient as it could be.
+
+### Linker Cache Files
+
+From PERFORMANCE.md:
+
+> The "linker cache" on disk at `APP/.meteor/local/bundler-cache/linker` has some very large files that take a long time write, and they are apparently not cleaned up either.
+
+### Constraint Solving
+
+> Time spent reading from the packages database (a SQLite file) could be understood better and improved by batching queries, reading less data, or using SQLite better.
+
+### Package Server Updates
+
+> Talking to the package server to download new package metadata seems to take longer than it should; easily 5 seconds... and occasionally much longer.
+
+## Optimization Strategies
+
+### 1. Minimize Dependencies
+
+- Reduce total package count
+- Avoid packages with large dependency graphs
+- Use local packages when possible
+
+### 2. Optimize File Watching
+
+From PERFORMANCE.md:
+
+> Different apps can strain different parts of the Meteor tool, such as: File watchers - lots of total files, e.g. thousands
+
+- Keep `node_modules` small
+- Use `.meteorignore` to exclude unnecessary files
+- Avoid deeply nested directory structures
+
+### 3. Incremental Builds
+
+- Make small, focused changes
+- Leverage cached compiler results
+- Use `--production` only for final builds
+
+### 4. Development Workflow
+
+```bash
+# Faster development mode
+meteor run --production=false
+
+# Skip package updates
+meteor run --no-update
+
+# Increase timeout scale for slower machines
+TIMEOUT_SCALE_FACTOR=3 ./meteor self-test
+```
+
+### 5. Clean Caches Selectively
+
+```bash
+# Clear plugin cache
+rm -rf .meteor/local/plugin-cache
+
+# Clear bundler cache
+rm -rf .meteor/local/bundler-cache
+
+# DON'T remove local/db unless you want to lose data!
+```
+
+### 6. Bundle Size Optimization
+
+From bundler.js:
+
+```javascript
+// Dev-only packages are excluded in production builds
+const isProductionLike = 
+  ['build', 'deploy'].includes(global.currentCommand?.name) && 
+  buildMode === 'production';
+  
+if (isProductionLike) {
+  devOnlySkipPackages = getDevOnlyPackages();
+}
+```
+
+Mark development packages:
+
+```javascript
+// In package.js
+Package.onUse(function(api) {
+  api.use('some-dev-tool', { debugOnly: true });
+});
+```
+
+### 7. Parallel Processing
+
+From tools/README.md:
+
+```bash
+# Get ready faster
+./meteor --get-ready
+
+# Download dependencies in parallel
+SAVE_DEV_BUNDLE_TARBALL=t meteor run
+```
+
+## Monitoring Build Performance
+
+### Time Tracking
+
+```javascript
+// From bundler.js - all major operations are profiled
+const result = await Profile.time("operation name", async () => {
+  // expensive operation
+  return result;
+});
+```
+
+### Memory Management
+
+```bash
+# Increase Node.js heap size
+NODE_OPTIONS="--max-old-space-size=4096" meteor build ./output
+
+# Monitor memory usage
+NODE_OPTIONS="--trace-gc" meteor run
+```
+
+### Debugging Slow Builds
+
+1. Enable profiling: `METEOR_PROFILE=100 meteor run`
+2. Identify slow operations in output
+3. Use inspector profiling for detailed analysis
+4. Check cache directories for bloat
+5. Verify file watcher isn't tracking too many files
+
+## Best Practices
+
+1. **Use SSD storage** for development
+2. **Keep dependencies minimal** and up-to-date
+3. **Leverage caching** - don't clear caches unnecessarily
+4. **Profile before optimizing** - measure actual bottlenecks
+5. **Use production mode** only for final builds
+6. **Monitor bundle size** with production builds
+7. **Instrument custom code** for visibility
+8. **Update Meteor regularly** for performance improvements
+
+## Related Topics
+
+- [Isobuild](./isobuild) - Build system architecture
+- [Bundler](./bundler) - Bundle generation
+- [Compiler Plugins](./compiler-plugins) - Plugin system

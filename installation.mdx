@@ -1,0 +1,325 @@
+---
+title: "Installing Meteor"
+description: "Install Meteor on your system and set up your development environment. Support for Linux, macOS, and Windows."
+---
+
+## System Requirements
+
+Meteor supports the following platforms:
+
+<CardGroup cols={3}>
+  <Card title="Linux" icon="linux">
+    64-bit and ARM64 architectures
+  </Card>
+  <Card title="macOS" icon="apple">
+    Intel (x86_64) and Apple Silicon (ARM64)
+  </Card>
+  <Card title="Windows" icon="windows">
+    Via Windows Subsystem for Linux (WSL)
+  </Card>
+</CardGroup>
+
+<Note>
+  Meteor currently supports **64-bit** and **ARM64** processors. 32-bit systems are not supported.
+</Note>
+
+## Quick Installation
+
+The easiest way to install and run Meteor is using `npx`:
+
+```bash
+npx meteor
+```
+
+This command will automatically download and run the latest version of Meteor without requiring a global installation.
+
+## Installation Methods
+
+<Tabs>
+  <Tab title="macOS/Linux">
+    <Steps>
+      <Step title="Install Meteor">
+        Open your terminal and run:
+        
+        ```bash
+        npx meteor
+        ```
+        
+        The first time you run this command, it will download and install Meteor. Subsequent runs will use the cached version.
+      </Step>
+      
+      <Step title="Verify Installation">
+        Check that Meteor is installed correctly:
+        
+        ```bash
+        meteor --version
+        ```
+        
+        You should see output similar to:
+        ```
+        Meteor 3.2.2
+        ```
+      </Step>
+      
+      <Step title="Check Node.js Version">
+        Meteor includes a specific Node.js version. Verify it:
+        
+        ```bash
+        meteor node --version
+        ```
+        
+        <Info>
+          Meteor 3.x uses Node.js 20.x. You don't need to install Node.js separately for Meteor development.
+        </Info>
+      </Step>
+    </Steps>
+  </Tab>
+  
+  <Tab title="Windows (WSL)">
+    <Steps>
+      <Step title="Set Up WSL">
+        Windows users should use Windows Subsystem for Linux (WSL). Install WSL 2:
+        
+        ```powershell
+        wsl --install
+        ```
+        
+        This will install Ubuntu by default. Restart your computer when prompted.
+      </Step>
+      
+      <Step title="Open WSL Terminal">
+        Launch your WSL distribution (e.g., Ubuntu) from the Start menu or by running:
+        
+        ```powershell
+        wsl
+        ```
+      </Step>
+      
+      <Step title="Install Meteor in WSL">
+        Inside the WSL terminal, run:
+        
+        ```bash
+        npx meteor
+        ```
+        
+        Meteor will download and install within your WSL environment.
+      </Step>
+      
+      <Step title="Verify Installation">
+        Confirm Meteor is working:
+        
+        ```bash
+        meteor --version
+        ```
+      </Step>
+    </Steps>
+    
+    <Warning>
+      Do not install Meteor directly on Windows. Always use WSL for the best development experience.
+    </Warning>
+  </Tab>
+  
+  <Tab title="Development from Source">
+    <Steps>
+      <Step title="Clone the Repository">
+        If you want to run Meteor from source or contribute to development:
+        
+        ```bash
+        git clone --recursive https://github.com/meteor/meteor.git
+        cd meteor
+        ```
+        
+        <Note>
+          The `--recursive` flag is important as Meteor uses Git submodules.
+        </Note>
+      </Step>
+      
+      <Step title="Update Submodules (if needed)">
+        If you cloned without `--recursive` or need to update submodules:
+        
+        ```bash
+        git submodule update --init --recursive
+        ```
+      </Step>
+      
+      <Step title="Run Meteor from Checkout">
+        Download dependencies and run Meteor:
+        
+        ```bash
+        ./meteor --help
+        ```
+        
+        The first run will download the dev bundle automatically.
+      </Step>
+      
+      <Step title="Create an Alias (Optional)">
+        For easier access, create an alias:
+        
+        ```bash
+        echo 'alias mymeteor="/path/to/meteor-checkout/meteor"' >> ~/.bashrc
+        source ~/.bashrc
+        ```
+        
+        Now you can use `mymeteor` instead of the full path.
+      </Step>
+    </Steps>
+    
+    <Tip>
+      When running Meteor from a checkout, you cannot pin apps to specific releases using `--release`.
+    </Tip>
+  </Tab>
+</Tabs>
+
+## Prerequisites
+
+Meteor bundles everything you need to get started:
+
+<CardGroup cols={2}>
+  <Card title="Node.js" icon="node-js">
+    **Included**: Meteor ships with Node.js 20.x. No separate installation needed.
+  </Card>
+  
+  <Card title="npm" icon="npm">
+    **Included**: npm package manager is bundled with Meteor's Node.js.
+  </Card>
+  
+  <Card title="MongoDB" icon="database">
+    **Included**: Embedded MongoDB for local development. No manual setup required.
+  </Card>
+  
+  <Card title="Build Tools" icon="hammer">
+    **Included**: Rspack bundler, Babel, TypeScript compiler all work out of the box.
+  </Card>
+</CardGroup>
+
+<Info>
+  Meteor is a complete development platform. Once installed, you can immediately start building applications without configuring additional tools.
+</Info>
+
+## Optional Dependencies
+
+While Meteor includes everything you need, some features benefit from additional packages:
+
+### bcrypt (Recommended)
+
+If you're using password authentication, install bcrypt for better security:
+
+```bash
+meteor npm install --save bcrypt
+```
+
+<Warning>
+  Without bcrypt, Meteor uses a pure-JavaScript implementation which is slower and less secure.
+</Warning>
+
+### Development Tools
+
+For debugging the Meteor tool itself:
+
+```bash
+TOOL_NODE_FLAGS="--inspect-brk" meteor
+```
+
+Then open `chrome://inspect` in Chrome to debug.
+
+## Troubleshooting
+
+### Architecture Detection
+
+Meteor automatically detects your system architecture:
+
+```bash
+# Check your architecture
+uname -m
+```
+
+Supported architectures:
+- `x86_64` - Intel/AMD 64-bit
+- `arm64` - ARM 64-bit (Apple Silicon, ARM servers)
+
+<Tip>
+  On multi-arch systems, you can manually set the architecture:
+  ```bash
+  ARCH=arm64 meteor create my-app
+  ```
+</Tip>
+
+### Dev Bundle Cache
+
+Meteor caches the dev bundle to speed up subsequent runs. To enable caching:
+
+```bash
+SAVE_DEV_BUNDLE_TARBALL=1 meteor
+```
+
+Cached bundles are stored in the Meteor installation directory.
+
+### Submodule Issues
+
+If you see "Depending on unknown package" errors when running from source:
+
+```bash
+git submodule update --init --recursive
+```
+
+### Windows-Specific Issues
+
+For Windows users experiencing issues with WSL:
+
+1. Ensure WSL 2 is installed (not WSL 1)
+2. Keep your project files inside the WSL filesystem (not `/mnt/c/`)
+3. Use the WSL terminal, not Windows Command Prompt
+
+## Version Management
+
+### Check Current Version
+
+```bash
+meteor --version
+```
+
+### Update Meteor
+
+To update to the latest version:
+
+```bash
+meteor update
+```
+
+### Update a Specific Project
+
+Inside a Meteor project:
+
+```bash
+meteor update --release 3.2.2
+```
+
+<Note>
+  Meteor uses a `.meteor/release` file in each project to track the version. This ensures consistent builds across team members.
+</Note>
+
+## Next Steps
+
+Now that Meteor is installed, you're ready to create your first application:
+
+<CardGroup cols={2}>
+  <Card title="Quick Start Guide" icon="rocket" href="/quickstart">
+    Create and run your first Meteor app in minutes.
+  </Card>
+  
+  <Card title="Complete Tutorial" icon="graduation-cap" href="/tutorial">
+    Build a full-featured To-Do application step by step.
+  </Card>
+</CardGroup>
+
+## Additional Resources
+
+<CardGroup cols={2}>
+  <Card title="Development Guide" icon="code" href="https://github.com/meteor/meteor/blob/master/DEVELOPMENT.md">
+    Contributing to Meteor core and running from source.
+  </Card>
+  
+  <Card title="System Requirements" icon="server">
+    Minimum: 64-bit or ARM64 processor, 2GB RAM, 1GB disk space
+  </Card>
+</CardGroup>

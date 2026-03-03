@@ -1,0 +1,489 @@
+---
+title: Performance Profiling
+description: Tools and techniques for profiling Meteor application performance
+---
+
+# Performance Profiling
+
+Profiling helps identify performance bottlenecks in the Meteor build tool and application. This guide covers built-in profilers and profiling techniques from the Meteor source code.
+
+## Built-in Profiler (METEOR_PROFILE)
+
+Meteor includes a built-in profiler activated with the `METEOR_PROFILE` environment variable.
+
+### Basic Usage
+
+The value is interpreted as a threshold in milliseconds:
+
+```bash
+METEOR_PROFILE=1 meteor run
+```
+
+This reports all calls taking more than 1ms.
+
+### Adjusting Threshold
+
+Higher thresholds show only slower operations:
+
+```bash
+METEOR_PROFILE=100 meteor run  # Only calls > 100ms
+METEOR_PROFILE=200 meteor run  # Only calls > 200ms
+```
+
+### Understanding Output
+
+You'll see reports like:
+
+```
+| (#1) Profiling: ProjectContext prepareProjectForBuild
+| ProjectContext prepareProjectForBuild..........9,207 ms (1)
+|    _initializeCatalog.............................24 ms (1)
+|       files.readFile                               7 ms (2)
+|       runJavaScript package.js                     2 ms (1)
+|       files.rm_recursive                           4 ms (4)
+|       other _initializeCatalog                    11 ms
+|    _resolveConstraints.........................6,702 ms (1)
+|       bundler.readJsImage.........................42 ms (1)
+...
+| (#1) Total: 9,544 ms (ProjectContext prepareProjectForBuild)
+```
+
+### Reading the Report
+
+- **Top-down listing** - Hierarchical call structure
+- **Dotted lines** - Entries with child entries
+- **Time** - Total cumulative time of all calls
+- **Number in parentheses** - Call count
+- **Other** entries - Time not accounted for by instrumented children
+
+### Key Metrics
+
+Important sections to watch:
+
+- `ProjectContext prepareProjectForBuild` - Overall preparation time
+- `_initializeCatalog` - Package catalog loading
+- `_resolveConstraints` - Package version resolution
+- `bundler.readJsImage` - Loading compiled packages
+- `ImportScanner#_readFile` - File scanning and reading
+
+## Inspector Profiling (METEOR_INSPECT)
+
+Meteor includes advanced profiling using Node.js's `inspector` module, generating `.cpuprofile` files.
+
+### Basic Usage
+
+Specify which functions to profile:
+
+```bash
+METEOR_INSPECT=bundler.bundle meteor build ./output-build
+```
+
+### Profile Multiple Functions
+
+```bash
+METEOR_INSPECT=bundler.bundle,compiler.compile meteor run
+```
+
+### Available Functions
+
+Complete list for `METEOR_INSPECT`:
+
+- `bundler.bundle`
+- `compiler.compile`
+- `Babel.compile`
+- `_readProjectMetadata`
+- `initializeCatalog`
+- `_downloadMissingPackages`
+- `_saveChangeMetadata`
+- `_realpath`
+- `package-client`
+
+### Configuration Options
+
+**Context identifier:**
+```bash
+METEOR_INSPECT_CONTEXT=my_build
+```
+
+**Output directory:**
+```bash
+METEOR_INSPECT_OUTPUT=/path/to/profiles
+```
+
+Default: `./profiling`
+
+**Sampling interval:**
+```bash
+METEOR_INSPECT_INTERVAL=500
+```
+
+Lower values = more detail, more memory usage.
+
+**Maximum profile size:**
+```bash
+METEOR_INSPECT_MAX_SIZE=1000
+```
+
+Default: 2000 MB. Prevents out-of-memory errors.
+
+### Complete Example
+
+```bash
+METEOR_INSPECT=bundler.bundle,compiler.compile \
+METEOR_INSPECT_CONTEXT=production_build \
+METEOR_INSPECT_OUTPUT=./profiles \
+METEOR_INSPECT_INTERVAL=500 \
+METEOR_INSPECT_MAX_SIZE=1000 \
+meteor build --directory ./output
+```
+
+## Viewing Profile Results
+
+### Chrome DevTools
+
+1. Open Chrome DevTools (F12)
+2. Go to "Performance" or "Profiler" tab
+3. Click "Load Profile"
+4. Select the `.cpuprofile` file
+
+### Discoveryjs cpupro
+
+Open-source interactive CPU profile viewer:
+
+**Online:**
+1. Visit https://discoveryjs.github.io/cpupro/
+2. Drag and drop your `.cpuprofile` file
+3. Explore the interactive visualization
+
+**Locally:**
+```bash
+npm install -g cpupro
+cpupro <profile-file>.cpuprofile
+```
+
+**Advantages over Chrome DevTools:**
+- Better handling of large profiles
+- More flexible filtering
+- Advanced search capabilities
+- Multiple visualization modes
+- Ability to compare profiles
+
+## Memory Optimization
+
+### Increasing Memory Limit
+
+Inspector profiling consumes more memory:
+
+```bash
+NODE_OPTIONS="--max-old-space-size=4096" \
+METEOR_INSPECT=bundler.bundle meteor build ./output
+```
+
+### Memory Considerations
+
+- Inspector profiling uses more memory than standard profiler
+- Large profiles (>2GB) automatically truncated
+- Consider `METEOR_INSPECT_MAX_SIZE` to limit memory usage
+- Use standard profiler for quick analysis
+
+## When to Use Each Profiler
+
+### Use METEOR_PROFILE when:
+
+- Quick performance check needed
+- General analysis of build times
+- Identifying obvious bottlenecks
+- Low memory environment
+- CI/CD performance monitoring
+
+### Use METEOR_INSPECT when:
+
+- Deep analysis required
+- Complex performance issues
+- Specific bottleneck investigation
+- Visual analysis needed
+- Comparing multiple builds
+
+## Instrumenting Code
+
+Add profiling annotations to your own code:
+
+### Wrap Functions
+
+```javascript
+var doIt = Profile("doIt", function (...) {
+  // function body
+});
+```
+
+### Wrap Methods
+
+```javascript
+MyClass.prototype.doIt = Profile(
+  "MyClass doIt",
+  MyClass.prototype.doIt
+);
+```
+
+### Timed Blocks
+
+```javascript
+function doIt() {
+  var result = Profile.time("doIt", () => {
+    // timed code
+  });
+  return result;
+}
+```
+
+### Conditional Profiling
+
+For packages loaded into the tool:
+
+```javascript
+if (typeof Profile !== 'undefined') {
+  Profile.time("operation", () => {
+    // code
+  });
+} else {
+  // code without profiling
+}
+```
+
+## Performance Considerations
+
+### Unreported Work
+
+Not covered by standard reports:
+- App start-up time
+- File watcher creation after rebuild
+
+### Caching Impact
+
+**Multiple cache layers affect timing:**
+- Built packages and plugins
+- Compiler plugin results (including old file versions)
+- Linker output
+- Server program (for client-only changes)
+- Constraint solver results
+
+**Rebuild Timings:**
+- Initial build: Slowest (cold cache)
+- First rebuild: Faster (warm cache)
+- Second rebuild: Even faster (fully warm)
+
+### Release vs Checkout
+
+**Performance differences:**
+
+**Release Mode:**
+- Faster startup
+- Pre-built core packages
+- Efficient constraint solving
+
+**Checkout Mode:**
+- Recompiles core packages
+- Large number of watched files
+- Extra delay after rebuild
+- Useful for tool development
+
+### Hardware and OS Impact
+
+**Disk Speed:**
+- SSDs much faster than HDDs
+- Impacts cache read/write times
+
+**Operating System:**
+- Mac/Linux: Fast file operations, symlinks, atomic renames
+- Windows: Slower file operations, no symlinks, rename = copy
+- Virus scanners can block/delay operations
+
+## Profiling Specific Areas
+
+### CSS Minification
+
+CSS processing can take 500ms to several seconds:
+
+```bash
+METEOR_PROFILE=100 meteor run --production
+```
+
+Watch for:
+- CSS parsing time
+- CSS generation time
+- Source map generation
+
+### Constraint Solving
+
+```bash
+METEOR_PROFILE=50 meteor run
+```
+
+Watch for:
+- `_resolveConstraints` time
+- Package database queries
+- Logic solver invocations
+
+### File Watching
+
+```bash
+METEOR_PROFILE=10 meteor run
+```
+
+Watch for:
+- File watcher creation
+- File scanning operations
+- WatchSet merging
+
+### Import Scanning
+
+```bash
+METEOR_INSPECT=compiler.compile meteor run
+```
+
+Watch for:
+- `ImportScanner#_readFile`
+- File reading operations
+- SHA1 hashing
+
+## Comparing Performance
+
+### Before/After Optimization
+
+1. **Baseline profile:**
+   ```bash
+   METEOR_PROFILE=100 meteor run > before.log 2>&1
+   ```
+
+2. **Apply optimization**
+
+3. **New profile:**
+   ```bash
+   METEOR_PROFILE=100 meteor run > after.log 2>&1
+   ```
+
+4. **Compare times** for specific operations
+
+### Using meteor profile
+
+Compare build performance:
+
+```bash
+meteor profile
+```
+
+This provides detailed timing for:
+- Prepare project
+- Build app
+- Individual build steps
+
+## Debugging with node-inspector
+
+For interactive debugging:
+
+```bash
+TOOL_NODE_FLAGS="--inspect" meteor run
+```
+
+Or break on first line:
+
+```bash
+TOOL_NODE_FLAGS="--inspect-brk" meteor run
+```
+
+Custom port:
+
+```bash
+TOOL_NODE_FLAGS="--inspect=6060" meteor run
+```
+
+### Debugging Test Apps
+
+```bash
+SELF_TEST_TOOL_NODE_FLAGS="--inspect-brk=5859" meteor self-test
+```
+
+Use different port to avoid collision with main tool.
+
+## Common Performance Issues
+
+### Large "other" Time
+
+If you see:
+
+```
+| ImportScanner#_readFile...............1,338 ms (329)
+|    files.readFile                       100 ms (329)
+|    sha1                                   3 ms (329)
+|    other ImportScanner#_readFile      1,235 ms
+```
+
+Large "other" indicates missing instrumentation. Add more `Profile` calls to narrow down.
+
+### Source Map Generation
+
+Noticeable time spent building source maps:
+
+- Consider more efficient use of `source-map` library
+- Look at Webpack's optimizations
+
+### Linker Cache Writes
+
+Large files taking seconds to write:
+
+- Watch `files.writeFileAtomically` calls
+- May appear outside top level (async)
+- Consider cleaning up old cache files
+
+### Package Server Updates
+
+Slow "Updating package catalog...":
+
+- Can take 5+ seconds
+- Sometimes much longer
+- Consider local package mirror
+
+## Best Practices
+
+1. **Use appropriate profiler** - METEOR_PROFILE for quick checks, METEOR_INSPECT for deep dives
+
+2. **Set reasonable thresholds** - Start with 100ms, adjust as needed
+
+3. **Profile production builds** - Different performance characteristics
+
+4. **Clear caches first** - For accurate cold-start measurements
+
+5. **Profile multiple runs** - Account for variability
+
+6. **Watch for GC** - Times can be inflated by garbage collection
+
+7. **Consider hardware** - SSD vs HDD, OS differences
+
+8. **Instrument custom code** - Add Profile calls to your plugins
+
+9. **Compare apples to apples** - Same cache state, same environment
+
+10. **Document findings** - Share results with team
+
+## Interpreting Results
+
+### Good Performance Indicators
+
+- Most time in actual work (compile, bundle)
+- Minimal "other" time
+- Efficient cache usage
+- Fast constraint solving
+
+### Red Flags
+
+- Large "other" sections
+- Repeated work (cache misses)
+- Slow file operations
+- Long constraint solving
+- Excessive file scanning
+
+## Related Topics
+
+- [Performance Optimization](/performance/optimization)
+- [Bundle Size Optimization](/performance/bundle-size)
+- [Caching Strategies](/performance/caching)

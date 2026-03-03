@@ -1,0 +1,536 @@
+---
+title: Testing Meteor Applications
+description: Comprehensive guide to testing Meteor apps with unit, integration, and end-to-end tests
+---
+
+## Overview
+
+Testing ensures your Meteor application works as expected and helps prevent regressions as your codebase evolves. Meteor provides built-in testing support with the `meteor test` command and integrates with popular testing frameworks.
+
+## Types of Tests
+
+### Unit Tests
+Test individual modules in isolation:
+
+- **Fast execution**
+- **Focused scope**
+- **Mock dependencies**
+- **Test pure functions**
+
+### Integration Tests
+Test multiple modules working together:
+
+- **More comprehensive**
+- **Test real interactions**
+- **Client-server communication**
+- **Database operations**
+
+### End-to-End (E2E) Tests
+Test complete user workflows:
+
+- **Browser automation**
+- **Full application testing**
+- **Real user scenarios**
+- **Slowest but most realistic**
+
+## Test Modes
+
+Meteor provides two test modes:
+
+### Test Mode
+
+```bash
+meteor test --driver-package meteortesting:mocha
+```
+
+- Loads files matching `*.test.js` or `*.spec.js`
+- **Does not** load application code automatically
+- Must import code you want to test
+- Sets `Meteor.isTest` to `true`
+- Uses clean test database
+
+### Full App Test Mode
+
+```bash
+meteor test --full-app --driver-package meteortesting:mocha
+```
+
+- Loads files matching `*.app-test.js` or `*.app-spec.js`
+- **Does** load application code
+- Sets `Meteor.isAppTest` to `true`
+- Better for integration tests
+
+## Setting Up Testing
+
+### Install Test Driver
+
+```bash
+# Mocha test driver (recommended)
+meteor add meteortesting:mocha
+
+# Install assertion libraries
+meteor npm install --save-dev chai
+meteor npm install --save-dev @faker-js/faker
+```
+
+### Run Tests
+
+```bash
+# Run unit tests
+meteor test --driver-package meteortesting:mocha
+
+# Run full-app tests
+meteor test --full-app --driver-package meteortesting:mocha
+
+# Run in different browser
+TEST_BROWSER_DRIVER=chrome meteor test --driver-package meteortesting:mocha
+
+# Run tests once and exit (for CI)
+meteor test --driver-package meteortesting:mocha --once
+```
+
+## Writing Unit Tests
+
+### Basic Test Structure
+
+```javascript
+// todos.test.js
+import { assert } from 'chai';
+import { Meteor } from 'meteor/meteor';
+import { Todos } from './todos';
+
+if (Meteor.isServer) {
+  describe('Todos', function() {
+    describe('collection', function() {
+      it('exists', function() {
+        assert.instanceOf(Todos, Mongo.Collection);
+      });
+    });
+  });
+}
+```
+
+### Testing Methods
+
+```javascript
+// methods.test.js
+import { Meteor } from 'meteor/meteor';
+import { assert } from 'chai';
+import { resetDatabase } from 'meteor/xolvio:cleaner';
+import { insertTodo } from './methods';
+import { Todos } from './todos';
+
+if (Meteor.isServer) {
+  describe('todos.insert', function() {
+    beforeEach(function() {
+      resetDatabase();
+    });
+    
+    it('creates a todo', function() {
+      const userId = 'testUser';
+      const listId = 'testList';
+      
+      const todoId = insertTodo.run.call(
+        { userId },
+        { text: 'Test todo', listId }
+      );
+      
+      assert.isString(todoId);
+      
+      const todo = Todos.findOne(todoId);
+      assert.equal(todo.text, 'Test todo');
+      assert.equal(todo.userId, userId);
+      assert.equal(todo.listId, listId);
+    });
+    
+    it('requires authentication', function() {
+      assert.throws(() => {
+        insertTodo.run.call(
+          { userId: null },
+          { text: 'Test todo', listId: 'testList' }
+        );
+      }, /not-authorized/);
+    });
+    
+    it('validates arguments', function() {
+      assert.throws(() => {
+        insertTodo.run.call(
+          { userId: 'testUser' },
+          { text: '', listId: 'testList' } // Empty text
+        );
+      });
+    });
+  });
+}
+```
+
+### Testing Publications
+
+```javascript
+// publications.test.js
+import { Meteor } from 'meteor/meteor';
+import { assert } from 'chai';
+import { PublicationCollector } from 'meteor/johanbrook:publication-collector';
+import { resetDatabase } from 'meteor/xolvio:cleaner';
+import './publications';
+import { Todos } from './todos';
+
+if (Meteor.isServer) {
+  describe('todos.inList', function() {
+    beforeEach(function() {
+      resetDatabase();
+      
+      // Insert test data
+      Todos.insert({
+        _id: 'todo1',
+        listId: 'list1',
+        text: 'Todo 1',
+        userId: 'user1'
+      });
+      
+      Todos.insert({
+        _id: 'todo2',
+        listId: 'list1',
+        text: 'Todo 2',
+        userId: 'user1'
+      });
+      
+      Todos.insert({
+        _id: 'todo3',
+        listId: 'list2',
+        text: 'Todo 3',
+        userId: 'user1'
+      });
+    });
+    
+    it('publishes todos for a list', function(done) {
+      const collector = new PublicationCollector(
+        { userId: 'user1' }
+      );
+      
+      collector.collect('todos.inList', 'list1', (collections) => {
+        assert.equal(collections.todos.length, 2);
+        assert.equal(collections.todos[0]._id, 'todo1');
+        assert.equal(collections.todos[1]._id, 'todo2');
+        done();
+      });
+    });
+    
+    it('validates listId parameter', function(done) {
+      const collector = new PublicationCollector();
+      
+      // Should throw error for invalid parameter
+      assert.throws(() => {
+        collector.collect('todos.inList', 123); // Not a string
+      });
+      done();
+    });
+  });
+}
+```
+
+## Test Data Management
+
+### Resetting the Database
+
+```bash
+# Install cleaner package
+meteor add xolvio:cleaner
+```
+
+```javascript
+import { resetDatabase } from 'meteor/xolvio:cleaner';
+
+describe('My tests', function() {
+  beforeEach(function() {
+    // Server-side: Direct reset
+    if (Meteor.isServer) {
+      resetDatabase();
+    }
+    
+    // Client-side: Call method
+    if (Meteor.isClient) {
+      Meteor.call('xolvio:cleaner/resetDatabase');
+    }
+  });
+});
+```
+
+### Using Factories
+
+```bash
+# Install factory package
+meteor add dburles:factory
+meteor npm install --save-dev @faker-js/faker
+```
+
+```javascript
+// factories.js
+import { Factory } from 'meteor/dburles:factory';
+import { faker } from '@faker-js/faker';
+import { Todos } from './todos';
+import { Lists } from './lists';
+
+// Define factories
+Factory.define('list', Lists, {
+  name: () => faker.lorem.words(3),
+  userId: () => 'testUser',
+  createdAt: () => new Date()
+});
+
+Factory.define('todo', Todos, {
+  text: () => faker.lorem.sentence(),
+  listId: () => Factory.get('list'),
+  checked: false,
+  createdAt: () => new Date()
+});
+```
+
+```javascript
+// Using factories in tests
+import './factories';
+import { Factory } from 'meteor/dburles:factory';
+
+describe('My tests', function() {
+  it('uses factory data', function() {
+    // Create a list
+    const list = Factory.create('list');
+    
+    // Create todos in that list
+    const todo1 = Factory.create('todo', { listId: list._id });
+    const todo2 = Factory.create('todo', { listId: list._id });
+    
+    assert.equal(Todos.find({ listId: list._id }).count(), 2);
+  });
+});
+```
+
+## Client-Side Testing
+
+### Stubbing Collections
+
+```bash
+meteor add hwillson:stub-collections
+```
+
+```javascript
+import { Meteor } from 'meteor/meteor';
+import { assert } from 'chai';
+import { stubCollections, restoreCollections } from 'meteor/hwillson:stub-collections';
+import { Todos } from './todos';
+
+if (Meteor.isClient) {
+  describe('Client tests', function() {
+    beforeEach(function() {
+      // Replace real collection with local collection
+      stubCollections(Todos);
+    });
+    
+    afterEach(function() {
+      // Restore original collection
+      restoreCollections(Todos);
+    });
+    
+    it('displays todos', function() {
+      // Insert test data into stubbed collection
+      Todos.insert({
+        _id: 'test1',
+        text: 'Test todo',
+        checked: false
+      });
+      
+      // Test UI with test data
+      const todos = Todos.find().fetch();
+      assert.equal(todos.length, 1);
+    });
+  });
+}
+```
+
+## Integration Tests
+
+### Full-App Tests
+
+```javascript
+// app.app-test.js
+import { Meteor } from 'meteor/meteor';
+import { assert } from 'chai';
+
+if (Meteor.isClient) {
+  describe('Application', function() {
+    it('loads successfully', function() {
+      assert.isObject(Meteor);
+    });
+    
+    it('has correct configuration', function() {
+      assert.equal(Meteor.settings.public.appName, 'MyApp');
+    });
+  });
+}
+
+if (Meteor.isServer) {
+  describe('Server', function() {
+    it('has correct environment', function() {
+      assert.equal(Meteor.isProduction, false);
+      assert.equal(Meteor.isServer, true);
+    });
+  });
+}
+```
+
+### Testing Client-Server Communication
+
+```javascript
+// integration.app-test.js
+import { Meteor } from 'meteor/meteor';
+import { assert } from 'chai';
+import { Todos } from '/imports/api/todos';
+
+if (Meteor.isClient) {
+  describe('Client-Server Integration', function() {
+    it('calls method and gets result', function(done) {
+      Meteor.call('todos.insert', {
+        text: 'Test todo',
+        listId: 'testList'
+      }, (error, result) => {
+        assert.isNull(error);
+        assert.isString(result);
+        done();
+      });
+    });
+    
+    it('subscribes to publication', function(done) {
+      const handle = Meteor.subscribe('todos.inList', 'testList');
+      
+      Tracker.autorun((computation) => {
+        if (handle.ready()) {
+          const todos = Todos.find().fetch();
+          assert.isArray(todos);
+          computation.stop();
+          done();
+        }
+      });
+    });
+  });
+}
+```
+
+## Testing Async Code
+
+```javascript
+describe('Async tests', function() {
+  it('handles promises', async function() {
+    const result = await Meteor.callAsync('todos.insert', {
+      text: 'Test todo',
+      listId: 'testList'
+    });
+    
+    assert.isString(result);
+    const todo = await Todos.findOneAsync(result);
+    assert.equal(todo.text, 'Test todo');
+  });
+  
+  it('uses callbacks', function(done) {
+    Meteor.call('todos.insert', {
+      text: 'Test todo',
+      listId: 'testList'
+    }, (error, result) => {
+      assert.isNull(error);
+      assert.isString(result);
+      done();
+    });
+  });
+});
+```
+
+## Continuous Integration
+
+### GitHub Actions Example
+
+```yaml
+# .github/workflows/test.yml
+name: Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v2
+      
+      - name: Install Meteor
+        run: curl https://install.meteor.com/ | sh
+      
+      - name: Install dependencies
+        run: meteor npm install
+      
+      - name: Run tests
+        run: |
+          meteor test --once \
+            --driver-package meteortesting:mocha \
+            --headless
+      
+      - name: Run full-app tests
+        run: |
+          meteor test --full-app --once \
+            --driver-package meteortesting:mocha \
+            --headless
+```
+
+## Best Practices
+
+### Test Organization
+
+```
+/imports
+  /api
+    /todos
+      todos.js
+      todos.test.js          # Unit tests
+      methods.js
+      methods.test.js        # Method tests
+      publications.js
+      publications.test.js   # Publication tests
+      factories.js           # Test data factories
+  /ui
+    /components
+      TodoItem.jsx
+      TodoItem.test.jsx      # Component tests
+/tests
+  integration.app-test.js  # Integration tests
+  e2e.app-test.js         # E2E tests
+```
+
+### Writing Good Tests
+
+<Tip>
+Follow the AAA pattern: **Arrange**, **Act**, **Assert**
+</Tip>
+
+```javascript
+it('marks todo as complete', function() {
+  // Arrange: Set up test data
+  const todoId = Factory.create('todo', { checked: false })._id;
+  const userId = 'testUser';
+  
+  // Act: Perform the action
+  setChecked.run.call(
+    { userId },
+    { todoId, checked: true }
+  );
+  
+  // Assert: Verify the result
+  const todo = Todos.findOne(todoId);
+  assert.equal(todo.checked, true);
+});
+```
+
+## Related Resources
+
+- [Mocha Documentation](https://mochajs.org/)
+- [Chai Assertion Library](https://www.chaijs.com/)
+- [Meteor Testing Guide](https://guide.meteor.com/testing.html)
+- [Methods Guide](/guides/methods)
+- [Publications Guide](/guides/publications)

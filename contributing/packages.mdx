@@ -1,0 +1,448 @@
+---
+title: Contributing Packages
+description: Learn how to create, test, and publish Meteor packages
+---
+
+Meteor packages are the primary way to extend Meteor's functionality. This guide covers creating and publishing both core and community packages.
+
+## Package Structure
+
+Every Meteor package requires a `package.js` file that defines metadata, dependencies, and files.
+
+### Basic Package.js
+
+```javascript package.js
+Package.describe({
+  name: 'username:packagename',
+  version: '0.0.1',
+  summary: 'A brief description of your package',
+  git: 'https://github.com/username/package',
+  documentation: 'README.md'
+});
+
+Package.onUse(function(api) {
+  api.versionsFrom(['2.3', '3.0']);
+  api.use('ecmascript');
+  api.mainModule('main.js');
+});
+
+Package.onTest(function(api) {
+  api.use('ecmascript');
+  api.use('tinytest');
+  api.use('username:packagename');
+  api.mainModule('tests.js');
+});
+```
+
+### Core Package Example
+
+Here's a real example from `packages/tracker/package.js`:
+
+```javascript
+Package.describe({
+  summary: "Dependency tracker to allow reactive callbacks",
+  version: '1.3.4',
+});
+
+Package.onUse(function (api) {
+  api.use("ecmascript");
+  api.addFiles("tracker.js");
+  api.export("Tracker");
+  api.export("Deps");
+  api.addAssets("tracker.d.ts", ["client", "server"]);
+});
+
+Package.onTest(function (api) {
+  api.use('tinytest');
+  api.use('test-helpers');
+  api.use('tracker');
+  api.addFiles('tracker_tests.js', 'client');
+});
+```
+
+### Complex Package Example
+
+From `packages/mongo/package.js`:
+
+```javascript
+Package.describe({
+  summary: "Adaptor for using MongoDB and Minimongo over DDP",
+  version: "2.2.0",
+});
+
+Npm.depends({
+  "mongodb-uri": "0.9.7",
+  "lodash.throttle": "4.1.1",
+});
+
+Package.onUse(function (api) {
+  api.use("npm-mongo", "server");
+  api.use([
+    "random",
+    "ejson",
+    "minimongo",
+    "ddp",
+    "tracker",
+    "ecmascript",
+  ]);
+  
+  // Weak dependencies
+  api.use("insecure", { weak: true });
+  api.use("autopublish", "server", { weak: true });
+  
+  api.export("Mongo");
+  api.export("MongoInternals", "server");
+  
+  api.addFiles([
+    "mongo_driver.js",
+    "local_collection_driver.js",
+  ], "server");
+});
+```
+
+## Package API Methods
+
+### Package.describe()
+
+```javascript
+Package.describe({
+  name: 'username:package',      // Required for published packages
+  version: '1.0.0',              // Semantic version
+  summary: 'Short description',  // Max 100 chars
+  git: 'https://...',            // Git repository
+  documentation: 'README.md'     // Documentation file
+});
+```
+
+### api.versionsFrom()
+
+Specify compatible Meteor versions:
+
+```javascript
+// Single version
+api.versionsFrom('3.0');
+
+// Multiple versions (Meteor 2 and 3)
+api.versionsFrom(['2.3', '3.0']);
+```
+
+### api.use()
+
+Declare package dependencies:
+
+```javascript
+// Single package
+api.use('ecmascript');
+
+// Multiple packages
+api.use(['tracker', 'reactive-var']);
+
+// Platform-specific
+api.use('webapp', 'server');
+api.use('tracker', 'client');
+
+// Weak dependencies (optional)
+api.use('accounts-base', { weak: true });
+
+// Unordered (load in any order)
+api.use('my-package', { unordered: true });
+```
+
+### api.addFiles()
+
+Add source files to the package:
+
+```javascript
+// Single file
+api.addFiles('main.js');
+
+// Multiple files
+api.addFiles([
+  'client.js',
+  'server.js'
+]);
+
+// Platform-specific
+api.addFiles('client.js', 'client');
+api.addFiles('server.js', 'server');
+api.addFiles('both.js', ['client', 'server']);
+```
+
+### api.mainModule()
+
+Specify the main entry point (recommended over addFiles):
+
+```javascript
+// Single entry point
+api.mainModule('index.js');
+
+// Platform-specific
+api.mainModule('client/index.js', 'client');
+api.mainModule('server/index.js', 'server');
+```
+
+### api.export()
+
+Export symbols globally:
+
+```javascript
+// Export to client and server
+api.export('MySymbol');
+
+// Platform-specific export
+api.export('ServerOnly', 'server');
+
+// Multiple exports
+api.export(['Symbol1', 'Symbol2']);
+
+// Test-only export
+api.export('InternalAPI', 'server', { testOnly: true });
+```
+
+### api.addAssets()
+
+Add non-code assets:
+
+```javascript
+api.addAssets('data.json', 'server');
+api.addAssets('types.d.ts', ['client', 'server']);
+```
+
+### Npm.depends()
+
+Declare npm dependencies:
+
+```javascript
+Npm.depends({
+  'lodash': '4.17.21',
+  'moment': '2.29.1'
+});
+```
+
+## Creating a Package
+
+<Steps>
+  <Step title="Create package structure">
+    Use the Meteor command to scaffold a package:
+    
+    ```bash
+    meteor create --package username:packagename
+    cd packagename
+    ```
+  </Step>
+  
+  <Step title="Edit package.js">
+    Update the package metadata and dependencies:
+    
+    ```javascript
+    Package.describe({
+      name: 'username:packagename',
+      version: '0.0.1',
+      summary: 'What your package does',
+      git: 'https://github.com/username/packagename',
+      documentation: 'README.md'
+    });
+    ```
+  </Step>
+  
+  <Step title="Write your code">
+    Create your main module file:
+    
+    ```javascript main.js
+    export const greet = (name) => {
+      return `Hello, ${name}!`;
+    };
+    ```
+  </Step>
+  
+  <Step title="Add tests">
+    Write tests in your test file:
+    
+    ```javascript tests.js
+    import { greet } from 'meteor/username:packagename';
+    
+    Tinytest.add('greet - returns greeting', function (test) {
+      test.equal(greet('World'), 'Hello, World!');
+    });
+    ```
+  </Step>
+</Steps>
+
+## Testing Packages
+
+### Local Testing
+
+Test your package in a local app:
+
+```bash
+# Create test app
+meteor create test-app
+cd test-app
+
+# Add local package
+meteor add ../path/to/package
+
+# Run app
+meteor run
+```
+
+### Running Package Tests
+
+```bash
+# Run tests for your package
+meteor test-packages ./
+
+# With modern test driver
+meteor test-packages ./ --driver-package meteortesting:mocha
+```
+
+### Testing from Meteor Checkout
+
+When contributing to core packages:
+
+```bash
+# Test specific package
+./meteor test-packages packages/tracker
+
+# Test all packages
+./meteor test-packages
+```
+
+## Publishing Packages
+
+### Prerequisites
+
+<Steps>
+  <Step title="Ensure Meteor 3 compatibility">
+    For Meteor 3 packages, specify the release:
+    
+    ```javascript
+    api.versionsFrom('3.0');
+    ```
+  </Step>
+  
+  <Step title="Test thoroughly">
+    Run all tests and verify functionality:
+    
+    ```bash
+    meteor test-packages ./
+    ```
+  </Step>
+  
+  <Step title="Write documentation">
+    Create a comprehensive README.md with:
+    - Installation instructions
+    - Usage examples
+    - API documentation
+  </Step>
+</Steps>
+
+### Publishing to Atmosphere
+
+```bash
+# Login to Meteor account
+meteor login
+
+# Publish for Meteor 3
+meteor publish --release=3.0.3
+
+# Publish for both Meteor 2 and 3
+meteor publish
+```
+
+<Warning>
+If you omit `--release` when publishing Meteor 3 packages, they may default to Meteor 2 compatibility and cause Fibers-related errors.
+</Warning>
+
+### Version Bumping
+
+Follow semantic versioning:
+
+- **Patch** (1.0.0 → 1.0.1): Bug fixes, no breaking changes
+- **Minor** (1.0.0 → 1.1.0): New features, backward compatible
+- **Major** (1.0.0 → 2.0.0): Breaking changes
+
+For core packages:
+- **Patch bump**: Changes OK to release independently
+- **Minor bump**: Requires new Meteor release
+- **Major bump**: Major rewrite, requires new Meteor release
+
+## Core Package Contributions
+
+When contributing to core Meteor packages:
+
+### Guidelines
+
+- Each package should stand separately
+- APIs should be consistent between client and server where possible
+- Prefer synchronous APIs (use `Meteor.wrapAsync` on server)
+- Don't harm the new developer experience
+- Don't preclude experts from advanced usage
+
+### Submitting Pull Requests
+
+<Steps>
+  <Step title="Propose your change">
+    Create a Discussion to build consensus before coding
+  </Step>
+  
+  <Step title="Wait for 'ready' label">
+    Once labeled `ready`, leave a comment and start working
+  </Step>
+  
+  <Step title="Include tests">
+    All code changes must include tests
+  </Step>
+  
+  <Step title="Bump version">
+    Update version in `package.js` according to change type
+  </Step>
+  
+  <Step title="Follow code style">
+    Use the [Meteor Style Guide](https://github.com/meteor/javascript/)
+  </Step>
+</Steps>
+
+## Package Best Practices
+
+### Structure
+
+- Use `api.mainModule()` instead of `api.addFiles()` for modern packages
+- Organize code by feature, not by client/server
+- Use ES modules (`import`/`export`)
+
+### Dependencies
+
+- Minimize dependencies to reduce bloat
+- Use weak dependencies for optional integrations
+- Specify version constraints for stability
+
+### Exports
+
+- Only export public API symbols
+- Use `testOnly: true` for internal test helpers
+- Document all exported functions
+
+### Testing
+
+- Test both client and server code
+- Test integration with common packages
+- Include edge cases and error handling
+
+### Documentation
+
+- Clear README with examples
+- API reference for all exports
+- Changelog for version updates
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Testing Guidelines" icon="flask" href="/contributing/testing">
+    Learn how to write comprehensive tests
+  </Card>
+  
+  <Card title="Release Process" icon="rocket" href="/contributing/releases">
+    Understand how Meteor releases work
+  </Card>
+</CardGroup>

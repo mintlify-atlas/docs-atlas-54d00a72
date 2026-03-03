@@ -1,0 +1,270 @@
+---
+title: Development Setup
+description: Set up your local environment for contributing to Meteor core
+---
+
+This guide will help you set up a local development environment for contributing to Meteor core.
+
+## Running from a Git Checkout
+
+To run Meteor from source and contribute to development:
+
+<Steps>
+  <Step title="Clone the repository">
+    Clone the Meteor repository with submodules:
+    
+    ```bash
+    git clone --recursive https://github.com/meteor/meteor.git
+    cd meteor
+    ```
+    
+    <Warning>
+    **Important:** This repository uses Git submodules. If you clone without `--recursive`, re-fetch with `git pull`, or see "Depending on unknown package" errors, run:
+    
+    ```bash
+    git submodule update --init --recursive
+    ```
+    </Warning>
+  </Step>
+  
+  <Step title="Install dependencies">
+    Run a Meteor command to download dependencies:
+    
+    ```bash
+    ./meteor --help
+    ```
+    
+    This will download the dev bundle with pre-built binaries and npm dependencies.
+  </Step>
+  
+  <Step title="Start developing">
+    Your checkout is ready! Use `./meteor` instead of the system `meteor`:
+    
+    ```bash
+    cd my-app/
+    /path/to/meteor-checkout/meteor run
+    ```
+  </Step>
+</Steps>
+
+### Helpful Tips
+
+<Tip>
+**Create an alias** for easier usage:
+
+```bash
+alias mymeteor=/path/to/meteor-checkout/meteor
+```
+
+Add to `~/.bashrc` or `~/.zshrc` to persist across sessions.
+</Tip>
+
+<Tip>
+**Debug the Meteor tool** using Node inspector:
+
+```bash
+TOOL_NODE_FLAGS="--inspect-brk" mymeteor
+```
+
+Then use Chrome DevTools at `chrome://inspect`
+</Tip>
+
+### Checkout Limitations
+
+When running from a checkout:
+
+- You cannot pin apps to specific Meteor releases
+- Cannot use `--release` flag to change releases
+
+## The Dev Bundle
+
+The dev bundle (`dev_bundle`) contains essential code, packages, and tools:
+
+- Node.js
+- npm
+- MongoDB
+- TypeScript
+- Packages for meteor-tool
+- Packages for server bundles
+
+### When to Rebuild
+
+Rebuild the dev bundle when changing:
+
+- Node.js version
+- npm version
+- MongoDB version
+- TypeScript version
+- [Tool packages](https://github.com/meteor/meteor/blob/devel/scripts/dev-bundle-tool-package.js)
+- [Server bundle packages](https://github.com/meteor/meteor/blob/devel/scripts/dev-bundle-server-package.js)
+
+<Warning>
+Major version changes (especially Node.js and MongoDB) usually require substantial changes to other components. Test extensively!
+</Warning>
+
+### Dev Bundle Versions
+
+The version is stored in `BUNDLE_VERSION` at the top of the [`meteor`](https://github.com/meteor/meteor/blob/devel/meteor) script.
+
+**For local development:**
+- Use a different major version (e.g., `100.0.0`) to avoid clashing with official versions
+- Bump the minor version when submitting PRs that change the dev bundle
+
+**Cache downloaded bundles:**
+
+```bash
+SAVE_DEV_BUNDLE_TARBALL=1 ./meteor
+```
+
+Cached versions are stored in the checkout root. Delete them as needed to save space.
+
+### Rebuilding the Dev Bundle
+
+**Prerequisites:**
+- C and C++ compiler
+- autotools
+- scons
+
+**Build from scratch:**
+
+```bash
+./scripts/generate-dev-bundle.sh
+```
+
+This generates `dev_bundle_<Platform>_<arch>_<version>.tar.gz` in the checkout root.
+
+<Info>
+If you bumped `BUNDLE_VERSION`, the new bundle extracts automatically when you run `./meteor`. Otherwise, delete the existing `dev_bundle` directory first.
+</Info>
+
+### Submitting Dev Bundle PRs
+
+<Warning>
+Only Meteor Software staff can publish new dev bundles. CI tests will initially fail on dev bundle PRs until the bundle is built and published.
+</Warning>
+
+PRs with dev bundle changes will be flagged, and a request to build/publish will be forwarded to Meteor Software.
+
+## Code Structure
+
+Meteor core is documented within the code itself. Many components have `README.md` files:
+
+### Core Packages
+
+- [`ddp`](https://github.com/meteor/meteor/tree/devel/packages/ddp/README.md)
+- [`ecmascript`](https://github.com/meteor/meteor/tree/devel/packages/ecmascript/README.md)
+- [`tinytest`](https://github.com/meteor/meteor/tree/devel/packages/tinytest/README.md)
+
+### Tool Components
+
+- [`isobuild`](https://github.com/meteor/meteor/tree/devel/tools/isobuild/README.md)
+- [`cordova`](https://github.com/meteor/meteor/tree/devel/tools/cordova/README.md)
+- [`meteor-tool`](https://github.com/meteor/meteor/tree/devel/tools/README.md)
+
+## Code Style
+
+Follow these guidelines when contributing code:
+
+### Style Guide
+
+- Follow the [Meteor Style Guide](https://github.com/meteor/javascript/)
+- Based on [Airbnb Style Guide](https://github.com/airbnb/javascript) with Meteor-specific changes
+- Match existing code style in the same file for small changes
+- Use the style guide for larger new code additions
+
+### Linting
+
+Run ESLint to check code style:
+
+```bash
+./scripts/admin/eslint/eslint.sh
+```
+
+<Info>
+Many files haven't been converted yet and are [excluded from linting](https://github.com/meteor/meteor/blob/master/.eslintignore).
+</Info>
+
+### Code Change Rules
+
+- Only change code directly related to your feature/bug fix
+- Don't refactor unrelated code in the same PR
+- Keep changes focused and minimal
+
+## Commit Messages
+
+Write clear, helpful commit messages:
+
+### Format
+
+- **Title:** Short and descriptive (max 80 characters)
+- **Description:** Clearly explain the change and why it's needed
+- **References:** Link related issues with `#issue-number`
+- **Fixes:** Use "Fixes #issue-number" if the commit resolves the issue
+
+### Example
+
+```
+Fix reactivity bug in Tracker.autorun
+
+Tracker.autorun was not properly invalidating when nested
+computations changed. This adds proper dependency tracking
+for nested reactive contexts.
+
+Fixes #12345
+```
+
+## Continuous Integration
+
+CI runs automatically on:
+- Pull requests
+- Commits to the `devel` branch
+
+Tests are run by [Circle CI](https://circleci.com/) using configurations in:
+- [`circle.yml`](https://github.com/meteor/meteor/blob/devel/circle.yml)
+- [`scripts/ci.sh`](https://github.com/meteor/meteor/blob/devel/scripts/ci.sh)
+
+### Running Your Own CI
+
+You can run tests in your own CircleCI account for free:
+
+<Steps>
+  <Step title="Create CircleCI account">
+    Sign up at [CircleCI](https://circleci.com)
+  </Step>
+  
+  <Step title="Fork Meteor">
+    [Fork](https://help.github.com/articles/fork-a-repo/) the [Meteor repository](https://github.com/meteor/meteor) to your GitHub account
+  </Step>
+  
+  <Step title="Add project to CircleCI">
+    Go to [Add Projects](https://circleci.com/add-projects), click your GitHub username, find `meteor`, and click "Build project"
+  </Step>
+</Steps>
+
+Your build will start automatically! When tests pass, the status will show as passing when you open a PR.
+
+<Info>
+Not all tests run on CI - some are too slow or no longer relevant. The `slow` test suite can be run with `./meteor self-test --slow`.
+</Info>
+
+## Platform Notes
+
+### Windows Development
+
+<Warning>
+Windows doesn't currently have a CI system set up. Not all tests are known to work on Windows. Contributions to improve Windows test compatibility are appreciated!
+</Warning>
+
+On Windows, you need 7-Zip in your PATH to unpack dev bundles. [Download here](http://www.7-zip.org/)
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Testing Guidelines" icon="flask" href="/contributing/testing">
+    Learn how to run and write tests
+  </Card>
+  
+  <Card title="Contributing Packages" icon="box" href="/contributing/packages">
+    Create and publish packages
+  </Card>
+</CardGroup>

@@ -1,0 +1,192 @@
+---
+title: meteor list
+description: List packages in your Meteor project
+---
+
+The `meteor list` command displays the packages explicitly used by your Meteor project.
+
+## Usage
+
+```bash
+meteor list
+meteor list --tree [--weak]
+meteor list --json [--weak] [--details]
+```
+
+## Basic Usage
+
+List packages explicitly added to your project:
+
+```bash
+meteor list
+```
+
+This shows only the packages you've directly added with `meteor add`, not their transitive dependencies.
+
+## Tree View
+
+Show a tree of all packages including dependencies:
+
+```bash
+meteor list --tree
+```
+
+This displays a tree showing how packages are referenced, including all transitive dependencies.
+
+### Including Weak Dependencies
+
+Show weak dependencies in the tree:
+
+```bash
+meteor list --tree --weak
+```
+
+Weak dependencies are optional dependencies that a package can use if they're available but doesn't require.
+
+## JSON Output
+
+Output package information in JSON format:
+
+```bash
+meteor list --json
+```
+
+### Detailed JSON Output
+
+Include additional package details in JSON output:
+
+```bash
+meteor list --json --details
+```
+
+This includes more information about each package such as description, version, and more.
+
+## Options
+
+<ParamField path="--tree" type="boolean" default="false">
+  Display a tree showing how packages are referenced, including transitive dependencies
+</ParamField>
+
+<ParamField path="--weak" type="boolean" default="false">
+  Show weakly referenced dependencies in the tree or JSON output
+</ParamField>
+
+<ParamField path="--json" type="boolean" default="false">
+  Output the package list in JSON format
+</ParamField>
+
+<ParamField path="--details" type="boolean" default="false">
+  Add more package details to the JSON output (only works with --json)
+</ParamField>
+
+## Examples
+
+List all explicitly added packages:
+
+```bash
+meteor list
+```
+
+Output:
+```
+accounts-base          1.7.0
+accounts-password      1.7.0
+meteor-base           1.5.1
+mobile-experience     1.1.0
+mongo                 1.13.0
+reactive-var          1.0.11
+standard-minifier-css  1.7.4
+standard-minifier-js   2.7.1
+```
+
+Show dependency tree:
+
+```bash
+meteor list --tree
+```
+
+Output:
+```
+accounts-base@1.7.0
+├── check@1.3.1
+├── ddp@1.4.0
+│   ├── check@1.3.1
+│   └── random@1.2.0
+└── tracker@1.2.0
+```
+
+Show tree with weak dependencies:
+
+```bash
+meteor list --tree --weak
+```
+
+Output JSON:
+
+```bash
+meteor list --json
+```
+
+Output detailed JSON:
+
+```bash
+meteor list --json --details
+```
+
+## Understanding Output
+
+### Basic List
+
+The basic list shows:
+- Package name
+- Package version
+
+Only packages explicitly added to `.meteor/packages` are shown.
+
+### Tree View
+
+The tree view shows:
+- Package name and version
+- Dependencies indented below
+- How packages are connected
+
+### JSON Output
+
+The JSON output provides structured data suitable for programmatic processing.
+
+## Package Information
+
+To see more details about a specific package:
+
+```bash
+meteor show <package-name>
+```
+
+To see package information for a specific version:
+
+```bash
+meteor show <package-name>@<version>
+```
+
+## Direct vs. Transitive Dependencies
+
+**Direct dependencies** are packages you explicitly add:
+```bash
+meteor add accounts-password
+```
+
+**Transitive dependencies** are packages required by your direct dependencies. They're automatically included but not shown in the basic `meteor list` output.
+
+Use `meteor list --tree` to see both direct and transitive dependencies.
+
+## Version Information
+
+Package versions are stored in `.meteor/versions`. This file is automatically managed and should be committed to version control.
+
+## Related Commands
+
+- [`meteor add`](/cli/add) - Add packages to your project
+- [`meteor remove`](/cli/remove) - Remove packages from your project
+- [`meteor update`](/cli/update) - Update packages to newer versions
+- [`meteor search`](/cli/overview#finding-packages) - Search for available packages
+- [`meteor show`](/cli/overview#package-information) - Show detailed information about a package

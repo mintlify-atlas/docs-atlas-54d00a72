@@ -1,0 +1,235 @@
+---
+title: Package System Overview
+description: Understanding Meteor's Isobuild packaging system and Isopacks
+---
+
+Meteor has a powerful packaging system called **Isobuild** that compiles the same JavaScript codebase to different architectures: browser, Node.js-like server environment, or a webview in a Cordova mobile app.
+
+## What is Isobuild?
+
+Isobuild is Meteor's build and packaging system. It knows how to compile the same JavaScript code-base to different architectures automatically, enabling true full-stack JavaScript development.
+
+Key capabilities:
+- **Cross-platform compilation**: Build for browser, server, and mobile from a single codebase
+- **Dependency management**: Automatic resolution and loading of package dependencies
+- **Build plugins**: Extensible compiler, linter, and minifier architecture
+- **Single-loading**: Only one version of each package loads in an app
+
+## What is an Isopack?
+
+Each package used by Isobuild forms an **Isopack**. An Isopack is a package format containing source code for each architecture it can run on.
+
+```
+Isopack Structure
+├── web.browser (client build)
+├── os (server build)
+└── web.cordova (mobile build)
+```
+
+Each separate part built for a separate architecture is called a **Unibuild**.
+
+## Core Packages vs. Community Packages
+
+### Core Packages
+
+Core packages are maintained in the official Meteor repository at `packages/`. They are:
+- Released with Meteor versions
+- Always compatible with the current Meteor release
+- Don't have `.versions` files (released from checkout)
+
+Examples:
+- `accounts-base` - User account system
+- `mongo` - MongoDB adapter and Minimongo
+- `tracker` - Dependency tracker for reactive callbacks
+- `ecmascript` - ES2015+ compiler plugin
+
+### Community Packages
+
+Community packages are published to **Atmosphere**, Meteor's package repository:
+- Published by community members
+- Named with format `username:package-name`
+- Available via `meteor add username:package-name`
+- Browsable at [atmospherejs.com](https://atmospherejs.com)
+
+## Package Structure
+
+Every Meteor package contains a `package.js` file that defines:
+
+```javascript
+// Basic package metadata
+Package.describe({
+  summary: "A user account system",
+  version: "3.2.0"
+});
+
+// Package configuration
+Package.onUse((api) => {
+  // Dependencies
+  api.use('ecmascript');
+  api.use('ddp', ['client', 'server']);
+  
+  // Exports
+  api.export('Accounts');
+  
+  // Main modules
+  api.mainModule('server_main.js', 'server');
+  api.mainModule('client_main.js', 'client');
+});
+
+// Test configuration
+Package.onTest((api) => {
+  api.use(['accounts-base', 'tinytest']);
+  api.mainModule('server_tests.js', 'server');
+});
+```
+
+## Package Dependencies
+
+### Atmosphere Dependencies
+
+Packages can depend on other Meteor packages:
+
+```javascript
+api.use('tracker', 'client');           // Client only
+api.use('ddp', ['client', 'server']);   // Both
+api.use('blaze', 'client', { weak: true }); // Optional
+```
+
+### npm Dependencies
+
+Packages can include npm packages:
+
+```javascript
+Npm.depends({
+  'mongodb-uri': '0.9.7',
+  'lodash.throttle': '4.1.1'
+});
+```
+
+### Cordova Plugins
+
+Mobile apps can use Cordova plugins:
+
+```javascript
+Cordova.depends({
+  'cordova-plugin-camera': '2.4.1'
+});
+```
+
+## Version Constraints
+
+Meteor uses **Semantic Versioning** (SemVer) with a constraint solver:
+
+1. **Major version must match exactly**: If you depend on `2.0.0`, only `2.x.x` versions work
+2. **Minor/patch must be greater or equal**: `2.1.3` accepts `2.1.4` and `2.2.0`, but not `2.0.4`
+3. **Single-loading**: Only one version of a package loads per app
+4. **Gravity**: The solver picks the oldest compatible version
+
+```javascript
+// Specify minimum version
+api.use('mdg:validated-method@1.2.0');
+
+// Support multiple major versions
+api.use('blaze@1.0.0 || 2.0.0');
+
+// Use versions from a Meteor release
+api.versionsFrom('1.12.1');
+api.use(['ecmascript', 'check']); // Versions from 1.12.1
+```
+
+## Build Plugins
+
+Isobuild supports three types of build plugins:
+
+### Linters
+
+Check code for errors and style issues:
+
+```javascript
+Package.registerBuildPlugin({
+  name: 'eslint',
+  use: ['isobuild:linter-plugin@1.0.0'],
+  sources: ['plugin/eslint.js']
+});
+```
+
+### Compilers
+
+Transform source files to JavaScript or CSS:
+
+```javascript
+Package.registerBuildPlugin({
+  name: 'compile-ecmascript',
+  use: ['babel-compiler'],
+  sources: ['plugin.js']
+});
+```
+
+Real example from `ecmascript/package.js`:
+
+```javascript
+Package.registerBuildPlugin({
+  name: 'compile-ecmascript',
+  use: ['babel-compiler', 'react-fast-refresh'],
+  sources: ['plugin.js']
+});
+```
+
+### Minifiers
+
+Minify JavaScript and CSS for production:
+
+```javascript
+Plugin.registerMinifier({
+  extensions: ['js']
+}, () => new UglifyJsMinifier);
+```
+
+## Local Packages
+
+Packages can live locally in your app without publishing to Atmosphere:
+
+```
+my-app/
+├── packages/
+│   └── my-local-package/
+│       ├── package.js
+│       └── my-local-package.js
+└── .meteor/
+```
+
+Add them with:
+
+```bash
+meteor add my-local-package
+```
+
+Meteor looks for packages in this order:
+1. `packages/` directory in your app
+2. Directories in `METEOR_PACKAGE_DIRS` environment variable
+3. Downloaded packages from Atmosphere (cached in `~/.meteor/packages`)
+
+## Package Cache
+
+Published packages are cached at:
+- **macOS/Linux**: `~/.meteor/packages`
+- **Windows**: `%LOCALAPPDATA%\.meteor\packages`
+
+The on-disk format is optimized for loading, not editing. Always develop in source format.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Creating Packages" icon="plus" href="/packages/creating">
+    Learn how to create your own packages
+  </Card>
+  <Card title="Publishing Packages" icon="upload" href="/packages/publishing">
+    Publish your package to Atmosphere
+  </Card>
+  <Card title="Atmosphere Repository" icon="globe" href="/packages/atmosphere">
+    Explore the package ecosystem
+  </Card>
+  <Card title="Package.js API" icon="code" href="/api/packagejs">
+    Complete API reference
+  </Card>
+</CardGroup>

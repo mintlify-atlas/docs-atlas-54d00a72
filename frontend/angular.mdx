@@ -1,0 +1,418 @@
+---
+title: Angular Integration
+description: Build enterprise-grade applications with Angular and Meteor
+---
+
+Angular is a platform and framework for building single-page client applications. Meteor provides official support for Angular, combining Angular's powerful features with Meteor's real-time data capabilities.
+
+<Note>
+  The primary resource for Angular integration with Meteor is the [Angular-Meteor site](http://www.angular-meteor.com), which provides comprehensive documentation, tutorials, and examples.
+</Note>
+
+## Getting Started
+
+Angular-Meteor is maintained as a separate project that provides seamless integration between Angular and Meteor.
+
+### Installation
+
+The Angular-Meteor package provides everything needed to build Angular applications with Meteor:
+
+```bash
+meteor npm install --save angular2-meteor angular2-meteor-polyfills
+meteor add angular2-compilers
+```
+
+### Key Features
+
+<CardGroup cols={2}>
+  <Card title="Full Stack Reactivity" icon="rotate">
+    Automatic data synchronization between client and server
+  </Card>
+  <Card title="TypeScript Support" icon="code">
+    First-class TypeScript integration out of the box
+  </Card>
+  <Card title="RxJS Integration" icon="stream">
+    Reactive data streams with Angular observables
+  </Card>
+  <Card title="Ionic Support" icon="mobile">
+    Build mobile apps with Ionic and Meteor
+  </Card>
+</CardGroup>
+
+## Project Structure
+
+A typical Angular-Meteor application structure:
+
+```
+/client
+  main.ts              # Client entry point
+  main.html            # Main HTML file
+/imports
+  /api                 # Collections and methods
+    /tasks
+      tasks.ts
+      tasks.methods.ts
+      tasks.publications.ts
+  /ui
+    /components        # Angular components
+      /task-list
+        task-list.component.ts
+        task-list.component.html
+    /services          # Angular services
+    app.module.ts      # Main app module
+/server
+  main.ts              # Server entry point
+```
+
+## Basic Setup
+
+### Client Bootstrap
+
+Create `/client/main.ts`:
+
+```typescript
+import 'angular2-meteor-polyfills';
+import { platformBrowserDynamic } from '@angular/platform-browser-dynamic';
+import { Meteor } from 'meteor/meteor';
+import { AppModule } from '../imports/ui/app.module';
+
+Meteor.startup(() => {
+  platformBrowserDynamic().bootstrapModule(AppModule);
+});
+```
+
+### App Module
+
+Create `/imports/ui/app.module.ts`:
+
+```typescript
+import { NgModule } from '@angular/core';
+import { BrowserModule } from '@angular/platform-browser';
+import { AppComponent } from './app.component';
+import { TaskListComponent } from './components/task-list/task-list.component';
+
+@NgModule({
+  imports: [
+    BrowserModule
+  ],
+  declarations: [
+    AppComponent,
+    TaskListComponent
+  ],
+  bootstrap: [
+    AppComponent
+  ]
+})
+export class AppModule {}
+```
+
+## Reactive Data
+
+Angular-Meteor provides reactive data integration through RxJS observables.
+
+### Using Collections
+
+```typescript
+import { Component, OnInit } from '@angular/core';
+import { Observable } from 'rxjs';
+import { Tasks } from '../../../api/tasks/tasks';
+
+@Component({
+  selector: 'task-list',
+  templateUrl: './task-list.component.html'
+})
+export class TaskListComponent implements OnInit {
+  tasks: Observable<Task[]>;
+  
+  ngOnInit() {
+    this.tasks = Tasks.find({}).zone();
+  }
+}
+```
+
+### Subscriptions
+
+```typescript
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Meteor } from 'meteor/meteor';
+import { MeteorObservable } from 'meteor-rxjs';
+import { Subscription } from 'rxjs';
+
+@Component({
+  selector: 'task-list',
+  templateUrl: './task-list.component.html'
+})
+export class TaskListComponent implements OnInit, OnDestroy {
+  tasks: Observable<Task[]>;
+  subscription: Subscription;
+  
+  ngOnInit() {
+    this.subscription = MeteorObservable.subscribe('tasks').subscribe(() => {
+      this.tasks = Tasks.find({}).zone();
+    });
+  }
+  
+  ngOnDestroy() {
+    this.subscription.unsubscribe();
+  }
+}
+```
+
+## Methods and Collections
+
+<Tabs>
+  <Tab title="Collection">
+    ```typescript
+    import { Mongo } from 'meteor/mongo';
+
+    export interface Task {
+      _id?: string;
+      title: string;
+      completed: boolean;
+      createdAt: Date;
+    }
+
+    export const Tasks = new Mongo.Collection<Task>('tasks');
+    ```
+  </Tab>
+  
+  <Tab title="Methods">
+    ```typescript
+    import { Meteor } from 'meteor/meteor';
+    import { Tasks } from './tasks';
+
+    Meteor.methods({
+      'tasks.insert'(title: string) {
+        Tasks.insert({
+          title,
+          completed: false,
+          createdAt: new Date()
+        });
+      },
+      
+      'tasks.remove'(taskId: string) {
+        Tasks.remove(taskId);
+      },
+      
+      'tasks.toggleComplete'(taskId: string) {
+        const task = Tasks.findOne(taskId);
+        if (task) {
+          Tasks.update(taskId, {
+            $set: { completed: !task.completed }
+          });
+        }
+      }
+    });
+    ```
+  </Tab>
+  
+  <Tab title="Component">
+    ```typescript
+    import { Component } from '@angular/core';
+import { MeteorObservable } from 'meteor-rxjs';
+
+@Component({
+  selector: 'task-list',
+  templateUrl: './task-list.component.html'
+})
+export class TaskListComponent {
+  addTask(title: string) {
+    MeteorObservable.call('tasks.insert', title).subscribe();
+  }
+  
+  removeTask(taskId: string) {
+    MeteorObservable.call('tasks.remove', taskId).subscribe();
+  }
+  
+  toggleTask(taskId: string) {
+    MeteorObservable.call('tasks.toggleComplete', taskId).subscribe();
+  }
+}
+    ```
+  </Tab>
+</Tabs>
+
+## Authentication
+
+Angular-Meteor integrates with Meteor's accounts system:
+
+```typescript
+import { Component } from '@angular/core';
+import { Meteor } from 'meteor/meteor';
+import { MeteorObservable } from 'meteor-rxjs';
+
+@Component({
+  selector: 'login',
+  templateUrl: './login.component.html'
+})
+export class LoginComponent {
+  currentUser: Meteor.User | null = null;
+  
+  ngOnInit() {
+    MeteorObservable.autorun().subscribe(() => {
+      this.currentUser = Meteor.user();
+    });
+  }
+  
+  login(email: string, password: string) {
+    Meteor.loginWithPassword(email, password, (error) => {
+      if (error) {
+        alert(error.message);
+      }
+    });
+  }
+  
+  logout() {
+    Meteor.logout();
+  }
+}
+```
+
+## Routing
+
+Use Angular Router with Meteor:
+
+```typescript
+import { NgModule } from '@angular/core';
+import { RouterModule, Routes } from '@angular/router';
+import { HomeComponent } from './pages/home/home.component';
+import { TasksComponent } from './pages/tasks/tasks.component';
+
+const routes: Routes = [
+  { path: '', component: HomeComponent },
+  { path: 'tasks', component: TasksComponent },
+  { path: '**', redirectTo: '' }
+];
+
+@NgModule({
+  imports: [RouterModule.forRoot(routes)],
+  exports: [RouterModule]
+})
+export class AppRoutingModule {}
+```
+
+## Mobile Development
+
+Build mobile apps with Ionic and Meteor:
+
+```bash
+meteor npm install --save @ionic/angular
+```
+
+```typescript
+import { NgModule } from '@angular/core';
+import { IonicModule } from '@ionic/angular';
+import { AppComponent } from './app.component';
+
+@NgModule({
+  imports: [
+    IonicModule.forRoot()
+  ],
+  declarations: [AppComponent],
+  bootstrap: [AppComponent]
+})
+export class AppModule {}
+```
+
+## Testing
+
+Angular-Meteor supports standard Angular testing:
+
+```typescript
+import { TestBed } from '@angular/core/testing';
+import { TaskListComponent } from './task-list.component';
+
+describe('TaskListComponent', () => {
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      declarations: [TaskListComponent]
+    });
+  });
+  
+  it('should create', () => {
+    const fixture = TestBed.createComponent(TaskListComponent);
+    const component = fixture.componentInstance;
+    expect(component).toBeTruthy();
+  });
+});
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use TypeScript">
+    Take advantage of TypeScript's type safety for collections and methods:
+    
+    ```typescript
+    export interface Task {
+      _id?: string;
+      title: string;
+      completed: boolean;
+    }
+    
+    export const Tasks = new Mongo.Collection<Task>('tasks');
+    ```
+  </Accordion>
+  
+  <Accordion title="Leverage RxJS">
+    Use RxJS operators to transform and combine data streams:
+    
+    ```typescript
+    this.tasks = Tasks.find({}).zone().pipe(
+      map(tasks => tasks.filter(t => !t.completed)),
+      debounceTime(300)
+    );
+    ```
+  </Accordion>
+  
+  <Accordion title="Unsubscribe properly">
+    Always unsubscribe from observables in `ngOnDestroy`:
+    
+    ```typescript
+    ngOnDestroy() {
+      this.subscription.unsubscribe();
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Use services for data access">
+    Create Angular services to encapsulate Meteor data operations:
+    
+    ```typescript
+    @Injectable()
+    export class TasksService {
+      getTasks(): Observable<Task[]> {
+        return Tasks.find({}).zone();
+      }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="Angular-Meteor" icon="meteor" href="http://www.angular-meteor.com">
+    Official Angular-Meteor documentation and tutorials
+  </Card>
+  <Card title="GitHub Repository" icon="github" href="https://github.com/urigo/angular-meteor">
+    Source code and examples for Angular-Meteor
+  </Card>
+  <Card title="Angular Documentation" icon="angular" href="https://angular.io/docs">
+    Official Angular framework documentation
+  </Card>
+  <Card title="Ionic Framework" icon="mobile" href="https://ionicframework.com">
+    Build mobile apps with Ionic and Angular
+  </Card>
+</CardGroup>
+
+## Community and Support
+
+<CardGroup cols={2}>
+  <Card title="Stack Overflow" icon="stack-overflow" href="https://stackoverflow.com/questions/tagged/angular-meteor">
+    Ask questions with the angular-meteor tag
+  </Card>
+  <Card title="Meteor Forums" icon="comments" href="https://forums.meteor.com">
+    Discuss Angular-Meteor on the Meteor forums
+  </Card>
+</CardGroup>

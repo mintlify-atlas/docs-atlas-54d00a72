@@ -1,0 +1,350 @@
+---
+title: meteor publish
+description: Publish packages to the Meteor package server
+---
+
+The `meteor publish` command publishes a new version of a package to the Meteor package server.
+
+## Usage
+
+```bash
+meteor publish [options]
+meteor publish --update
+meteor publish --create
+```
+
+## Basic Usage
+
+Publish a package from the current directory:
+
+```bash
+meteor publish
+```
+
+This command must be run from a directory containing a `package.js` file.
+
+## Requirements
+
+Before publishing:
+
+1. **Version**: Your package must have an explicit version set in `Package.describe()`
+2. **Login**: You must be logged in (`meteor login`)
+3. **Package.js**: A valid `package.js` file must exist
+4. **Build**: The package must build successfully
+
+## First-Time Publishing
+
+When publishing a package for the first time, use the `--create` flag:
+
+```bash
+meteor publish --create
+```
+
+### Package Naming
+
+Package names should include your username as a prefix:
+
+```javascript
+Package.describe({
+  name: 'username:package-name',
+  version: '1.0.0',
+  // ...
+});
+```
+
+**Top-level packages** (without username prefix) can only be created by administrators. If you want to create a top-level package and are an admin, use:
+
+```bash
+meteor publish --create --top-level
+```
+
+## Updating Package Metadata
+
+To update metadata for an already-published version without re-publishing:
+
+```bash
+meteor publish --update
+```
+
+This updates:
+- Git URL
+- Version summary
+- Long-form description
+- Documentation
+
+You can preview the results with:
+
+```bash
+meteor show package-name@version
+```
+
+## Options
+
+<ParamField path="--create" type="boolean" default="false">
+  Publish a new package (first-time publishing)
+</ParamField>
+
+<ParamField path="--update" type="boolean" default="false">
+  Update metadata of a previously published version without re-publishing the package
+</ParamField>
+
+<ParamField path="--allow-incompatible-update" type="boolean" default="false">
+  Allow packages in your project to be upgraded or downgraded to versions that are potentially incompatible with the current versions, if required to satisfy all package version constraints.
+</ParamField>
+
+<ParamField path="--no-lint" type="boolean" default="false">
+  Don't run linters on the published package and its local dependencies before publishing
+</ParamField>
+
+<ParamField path="--release" type="string">
+  Specify the release of Meteor to resolve top-level version conflicts. Useful during migration when dealing with packages that have conflicting version requirements.
+</ParamField>
+
+<ParamField path="--top-level" type="boolean" default="false">
+  Create a top-level package without an account prefix (administrators only)
+</ParamField>
+
+<ParamField path="--existing-version" type="boolean" default="false">
+  (Internal) Publish using existing version with local source code. Good for bootstrapping core releases.
+</ParamField>
+
+## Examples
+
+Publish a package for the first time:
+
+```bash
+meteor login
+cd my-package
+meteor publish --create
+```
+
+Publish a new version:
+
+```bash
+cd my-package
+# Update version in package.js first
+meteor publish
+```
+
+Update metadata only:
+
+```bash
+cd my-package
+meteor publish --update
+```
+
+Publish without running linters:
+
+```bash
+meteor publish --no-lint
+```
+
+Publish with a specific release for version resolution:
+
+```bash
+meteor publish --release 2.15
+```
+
+## Package Structure
+
+A publishable package must have a `package.js` file:
+
+```javascript
+Package.describe({
+  name: 'username:my-package',
+  version: '1.0.0',
+  summary: 'Brief description of the package',
+  git: 'https://github.com/username/my-package.git',
+  documentation: 'README.md'
+});
+
+Package.onUse(function(api) {
+  api.versionsFrom('2.15');
+  api.use('ecmascript');
+  api.mainModule('my-package.js');
+});
+```
+
+## Documentation
+
+Your package should include documentation in a README file:
+
+```javascript
+Package.describe({
+  // ...
+  documentation: 'README.md'
+});
+```
+
+The README:
+- Must not be blank
+- Should explain how to use your package
+- Can use Markdown formatting
+- Will be displayed on the package page
+
+## Binary Packages
+
+If your package contains binary code (native npm modules with C/C++ dependencies):
+
+### Automatic Compilation (Meteor 1.4+)
+
+Meteor 1.4 and higher automatically compile packages with binary dependencies when they are installed, assuming the target machine has a basic compiler toolchain.
+
+Requirements: See [node-gyp platform requirements](https://github.com/nodejs/node-gyp)
+
+### Publishing for Multiple Architectures
+
+You can publish builds for specific architectures:
+
+```bash
+meteor publish-for-arch username:package@1.0.0
+```
+
+Run this on each architecture you want to support:
+- 32-bit Linux
+- 64-bit Linux
+- 64-bit macOS
+
+## Versioning
+
+Follow semantic versioning (semver):
+
+- **Patch** (1.0.x): Bug fixes, no API changes
+- **Minor** (1.x.0): New features, backward compatible
+- **Major** (x.0.0): Breaking changes
+
+```javascript
+Package.describe({
+  version: '1.2.3',  // Major.Minor.Patch
+  // ...
+});
+```
+
+## Managing Maintainers
+
+View or change package maintainers:
+
+```bash
+# List maintainers
+meteor admin maintainers username:package
+
+# Add a maintainer
+meteor admin maintainers username:package --add collaborator
+
+# Remove a maintainer
+meteor admin maintainers username:package --remove collaborator
+```
+
+## Authentication
+
+Log in before publishing:
+
+```bash
+meteor login
+```
+
+Check who you're logged in as:
+
+```bash
+meteor whoami
+```
+
+Log out:
+
+```bash
+meteor logout
+```
+
+## Publishing Workflow
+
+1. **Create or update** your package code
+2. **Update version** in `package.js`
+3. **Test** the package thoroughly
+4. **Update documentation** in README
+5. **Run linters** (or use `--no-lint` if needed)
+6. **Log in** to Meteor account
+7. **Publish** the package
+8. **Verify** the package with `meteor show`
+
+```bash
+# Example workflow
+cd my-package
+
+# Update version in package.js
+# Edit files, update README.md
+
+# Test
+meteor test-packages ./
+
+# Publish
+meteor login
+meteor publish
+
+# Verify
+meteor show username:my-package
+```
+
+## Troubleshooting
+
+### Version Already Exists
+
+If the version already exists, increment the version number in `package.js`.
+
+### Blank README
+
+You cannot publish with a blank README. Either:
+- Fill out the README
+- Set `documentation: null` in `Package.describe()`
+
+### Package Not Found
+
+Ensure you're in the correct directory containing `package.js`.
+
+### Linting Errors
+
+Fix linting errors or use `--no-lint` to skip linting:
+
+```bash
+meteor publish --no-lint
+```
+
+### Not Logged In
+
+Run `meteor login` before publishing.
+
+## Testing Before Publishing
+
+Test your package before publishing:
+
+```bash
+# Test the package
+meteor test-packages ./
+
+# Or test in an app
+cd my-app
+meteor add ../path/to/my-package
+```
+
+## After Publishing
+
+After successfully publishing:
+
+1. The package is immediately available for others to use
+2. Refresh the catalog to see your update:
+   ```bash
+   meteor search username:package
+   ```
+3. View package information:
+   ```bash
+   meteor show username:package
+   ```
+
+## Best Practices
+
+1. **Test thoroughly** before publishing
+2. **Use semantic versioning** correctly
+3. **Write good documentation** in your README
+4. **Keep dependencies minimal** to avoid conflicts
+5. **Specify version constraints** for dependencies
+6. **Don't publish breaking changes** in minor/patch versions
+7. **Consider backward compatibility** when updating

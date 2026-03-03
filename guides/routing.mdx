@@ -1,0 +1,478 @@
+---
+title: Routing in Meteor Apps
+description: URL-based navigation and routing patterns for Meteor applications
+---
+
+## Overview
+
+Routing drives your application's user interface based on URLs. In client-rendered Meteor apps, routing happens on the client side, allowing for instant navigation without server round-trips while maintaining browser features like bookmarking, back/forward buttons, and sharing links.
+
+## Why Client-Side Routing?
+
+Unlike traditional server-rendered apps where each URL change triggers a server request, Meteor apps:
+
+- Load once and update the UI based on URL changes
+- Navigate instantly without page reloads
+- Maintain state across navigation
+- Still support all browser URL features
+
+<Info>
+The URL represents **linkable state** - the parts of your application that users should be able to bookmark, share, or navigate to directly.
+</Info>
+
+## Flow Router
+
+The recommended routing package for Meteor is Flow Router Extra:
+
+```bash
+meteor add ostrio:flow-router-extra
+```
+
+Flow Router Extra extends the original Flow Router with additional features like `waitOn` for handling subscriptions and built-in template context.
+
+## Defining Routes
+
+### Basic Route
+
+```javascript
+import { FlowRouter } from 'meteor/ostrio:flow-router-extra';
+
+FlowRouter.route('/about', {
+  name: 'about',
+  action() {
+    console.log('User viewing about page');
+  }
+});
+```
+
+### Route with Parameters
+
+```javascript
+FlowRouter.route('/lists/:_id', {
+  name: 'Lists.show',
+  action(params, queryParams) {
+    console.log('List ID:', params._id);
+    console.log('Query params:', queryParams);
+  }
+});
+```
+
+### URL Pattern Matching
+
+```javascript
+// Pattern: /lists/:_id
+
+// Matches:
+'/lists/abc123'           // params: { _id: 'abc123' }
+'/lists/123?sort=name'    // params: { _id: '123' }, queryParams: { sort: 'name' }
+
+// Doesn't match:
+'/lists'                  // No ID parameter
+'/lists/abc/def'          // Too many segments
+```
+
+## Rendering Templates with Blaze
+
+### Using Blaze Layout
+
+Install the Blaze Layout package:
+
+```bash
+meteor add kadira:blaze-layout
+```
+
+### Define a Layout Template
+
+```html
+<template name="App_body">
+  <nav>
+    {{> navigation}}
+  </nav>
+  
+  <main>
+    {{> Template.dynamic template=main}}
+  </main>
+  
+  <footer>
+    {{> footer}}
+  </footer>
+</template>
+```
+
+### Render Templates on Route Changes
+
+```javascript
+import { FlowRouter } from 'meteor/ostrio:flow-router-extra';
+import { BlazeLayout } from 'meteor/kadira:blaze-layout';
+
+FlowRouter.route('/lists/:_id', {
+  name: 'Lists.show',
+  action() {
+    BlazeLayout.render('App_body', { main: 'Lists_show_page' });
+  }
+});
+```
+
+## Page Components
+
+Page components are top-level templates that:
+1. Collect route information
+2. Subscribe to data
+3. Fetch data from collections
+4. Pass data to child components
+
+```javascript
+// lists-show-page.js
+Template.Lists_show_page.onCreated(function() {
+  // Get route parameter
+  this.getListId = () => FlowRouter.getParam('_id');
+  
+  // Subscribe to data
+  this.autorun(() => {
+    const listId = this.getListId();
+    this.subscribe('todos.inList', listId);
+  });
+});
+
+Template.Lists_show_page.helpers({
+  list() {
+    const listId = Template.instance().getListId();
+    return Lists.findOne(listId);
+  },
+  todos() {
+    const listId = Template.instance().getListId();
+    return Todos.find({ listId });
+  },
+  isReady() {
+    return Template.instance().subscriptionsReady();
+  }
+});
+```
+
+```html
+<template name="Lists_show_page">
+  {{#if isReady}}
+    {{#if list}}
+      {{> Lists_show list=list todos=todos}}
+    {{else}}
+      {{> App_notFound}}
+    {{/if}}
+  {{else}}
+    {{> App_loading}}
+  {{/if}}
+</template>
+```
+
+## Accessing Route Information
+
+### Current Route
+
+```javascript
+// Get route name
+const routeName = FlowRouter.getRouteName();
+
+// Get URL parameters
+const listId = FlowRouter.getParam('_id');
+
+// Get query parameters
+const sortOrder = FlowRouter.getQueryParam('sort');
+
+// Get all route info
+const current = FlowRouter.current();
+console.log(current.route.name);
+console.log(current.params);
+console.log(current.queryParams);
+console.log(current.path);
+```
+
+### Reactive Route Helpers
+
+```javascript
+Template.MyTemplate.helpers({
+  currentPath() {
+    return FlowRouter.current().path;
+  },
+  isActive(routeName) {
+    return FlowRouter.getRouteName() === routeName;
+  }
+});
+```
+
+## Navigation
+
+### Programmatic Navigation
+
+```javascript
+// Navigate to a route
+FlowRouter.go('Lists.show', { _id: 'abc123' });
+
+// Navigate with query parameters
+FlowRouter.go('Lists.show', 
+  { _id: 'abc123' },
+  { sort: 'name', filter: 'active' }
+);
+
+// Navigate to a path
+FlowRouter.go('/about');
+
+// Go back
+FlowRouter.go(FlowRouter.current().route.name);
+```
+
+### Generate URLs
+
+```javascript
+// Generate path for a route
+const url = FlowRouter.path('Lists.show', { _id: 'abc123' });
+// Result: '/lists/abc123'
+
+// With query parameters
+const url = FlowRouter.path(
+  'Lists.show',
+  { _id: 'abc123' },
+  { sort: 'name' }
+);
+// Result: '/lists/abc123?sort=name'
+```
+
+### HTML Links
+
+```html
+{{#each list in lists}}
+  <a href="{{pathFor 'Lists.show' _id=list._id}}">
+    {{list.name}}
+  </a>
+{{/each}}
+```
+
+## Active Route Highlighting
+
+```javascript
+Template.Navigation.helpers({
+  activeClass(routeName) {
+    return FlowRouter.getRouteName() === routeName ? 'active' : '';
+  }
+});
+```
+
+```html
+<template name="Navigation">
+  <nav>
+    <a href="{{pathFor 'home'}}" class="{{activeClass 'home'}}">
+      Home
+    </a>
+    <a href="{{pathFor 'about'}}" class="{{activeClass 'about'}}">
+      About
+    </a>
+  </nav>
+</template>
+```
+
+Or using `ActiveRoute` (built into Flow Router Extra):
+
+```html
+<a href="/lists" class="{{ActiveRoute.name 'Lists.index'}}">
+  Lists
+</a>
+```
+
+## Route Groups
+
+Organize routes with common properties:
+
+```javascript
+// Create a group with common properties
+const authenticatedRoutes = FlowRouter.group({
+  name: 'authenticated',
+  triggersEnter: [function(context, redirect) {
+    if (!Meteor.userId()) {
+      redirect('/login');
+    }
+  }]
+});
+
+// Define routes in the group
+authenticatedRoutes.route('/dashboard', {
+  name: 'dashboard',
+  action() {
+    BlazeLayout.render('App_body', { main: 'Dashboard' });
+  }
+});
+
+authenticatedRoutes.route('/profile', {
+  name: 'profile',
+  action() {
+    BlazeLayout.render('App_body', { main: 'Profile' });
+  }
+});
+```
+
+## Route Triggers
+
+Execute code when entering or exiting routes:
+
+```javascript
+FlowRouter.route('/admin', {
+  name: 'admin',
+  triggersEnter: [
+    function(context, redirect) {
+      if (!Meteor.userId()) {
+        redirect('/login');
+      }
+    },
+    function(context, redirect) {
+      if (!Roles.userIsInRole(Meteor.userId(), 'admin')) {
+        redirect('/unauthorized');
+      }
+    }
+  ],
+  triggersExit: [
+    function() {
+      console.log('Leaving admin area');
+    }
+  ],
+  action() {
+    BlazeLayout.render('App_body', { main: 'Admin' });
+  }
+});
+```
+
+## Not Found (404) Routes
+
+```javascript
+FlowRouter.notFound = {
+  action() {
+    BlazeLayout.render('App_body', { main: 'App_notFound' });
+  }
+};
+```
+
+```html
+<template name="App_notFound">
+  <div class="not-found">
+    <h1>404 - Page Not Found</h1>
+    <p>The page you're looking for doesn't exist.</p>
+    <a href="{{pathFor 'home'}}">Go Home</a>
+  </div>
+</template>
+```
+
+## Using with React
+
+```javascript
+import React from 'react';
+import { FlowRouter } from 'meteor/ostrio:flow-router-extra';
+import { mount } from 'react-mounter';
+
+FlowRouter.route('/lists/:_id', {
+  name: 'Lists.show',
+  action(params) {
+    mount(ListPage, { listId: params._id });
+  }
+});
+```
+
+```javascript
+import React, { useState, useEffect } from 'react';
+import { useTracker } from 'meteor/react-meteor-data';
+import { FlowRouter } from 'meteor/ostrio:flow-router-extra';
+
+function ListPage({ listId }) {
+  const { list, todos, isLoading } = useTracker(() => {
+    const handle = Meteor.subscribe('todos.inList', listId);
+    return {
+      list: Lists.findOne(listId),
+      todos: Todos.find({ listId }).fetch(),
+      isLoading: !handle.ready()
+    };
+  }, [listId]);
+  
+  if (isLoading) return <div>Loading...</div>;
+  if (!list) return <div>List not found</div>;
+  
+  return (
+    <div>
+      <h1>{list.name}</h1>
+      <ul>
+        {todos.map(todo => (
+          <li key={todo._id}>{todo.text}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+```
+
+## Query Parameters
+
+### Reading Query Params
+
+```javascript
+FlowRouter.route('/search', {
+  name: 'search',
+  action(params, queryParams) {
+    // URL: /search?q=meteor&category=guides
+    console.log(queryParams.q);        // 'meteor'
+    console.log(queryParams.category); // 'guides'
+  }
+});
+```
+
+### Setting Query Params
+
+```javascript
+// Replace query params
+FlowRouter.setQueryParams({ sort: 'name', filter: 'active' });
+
+// Add/update specific params
+FlowRouter.setQueryParams({ page: 2 });
+```
+
+## Best Practices
+
+### Keep URLs Linkable
+
+<Tip>
+Only put state in the URL that users should be able to bookmark or share.
+</Tip>
+
+```javascript
+// ✅ Good: Linkable search state
+FlowRouter.go('search', {}, { q: 'meteor', category: 'guides' });
+
+// ❌ Bad: Temporary UI state
+FlowRouter.go('search', {}, { modalOpen: true, tooltipVisible: false });
+```
+
+### Subscribe in Page Components
+
+```javascript
+// ✅ Good: Subscribe close to where data is used
+Template.Lists_show_page.onCreated(function() {
+  this.autorun(() => {
+    this.subscribe('todos.inList', FlowRouter.getParam('_id'));
+  });
+});
+
+// ❌ Bad: Global subscriptions
+Meteor.startup(() => {
+  Meteor.subscribe('allTodos'); // Loads too much data
+});
+```
+
+### Use Named Routes
+
+```javascript
+// ✅ Good: Named routes are refactorable
+FlowRouter.go('Lists.show', { _id: listId });
+
+// ❌ Bad: Hardcoded paths break when routes change
+FlowRouter.go(`/lists/${listId}`);
+```
+
+## Related Resources
+
+- [Flow Router Extra Documentation](https://github.com/VeliovGroup/flow-router)
+- [Data Loading Guide](/guides/data-loading)
+- [Blaze Guide](https://blazejs.org/guide/introduction.html)
+- [React Router](https://reactrouter.com/) - Alternative for React apps

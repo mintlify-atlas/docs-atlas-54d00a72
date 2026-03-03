@@ -1,0 +1,417 @@
+---
+title: Custom Deployment
+description: Deploy Meteor applications manually using meteor build for custom hosting solutions
+---
+
+If you want to figure out your hosting solution completely from scratch, the Meteor tool has a command `meteor build` that creates a deployment bundle containing a plain Node.js application.
+
+This approach gives you complete control over your deployment infrastructure but requires more manual setup and maintenance compared to managed solutions.
+
+## Building Your Application
+
+The `meteor build` command creates a deployment bundle that can run on any server with Node.js and MongoDB.
+
+### Prerequisites
+
+Before building, ensure all npm dependencies are installed:
+
+```bash
+npm install --production
+```
+
+<Warning>
+Any npm dependencies must be installed before issuing the `meteor build` command to be included in the bundle.
+</Warning>
+
+### Build Command
+
+Create a production bundle for deployment:
+
+```bash
+meteor build /path/to/build --architecture os.linux.x86_64
+```
+
+<Note>
+It's important that you build your bundle for the correct architecture. For example, if deploying to a Ubuntu Linux server, use `os.linux.x86_64`.
+</Note>
+
+### Build Options
+
+- `--architecture` - Specify the target architecture (e.g., `os.linux.x86_64`)
+- `--directory` - Build to a directory instead of a tarball
+- `--server-only` - Don't build mobile apps
+- `--server` - Set the ROOT_URL (for mobile builds)
+
+Examples:
+
+```bash
+# Build as directory (no tarball)
+meteor build --directory /build --server-only
+
+# Build with specific server URL
+meteor build /path/to/build --server https://my-app.com
+```
+
+## Understanding the Bundle
+
+The `meteor build` command produces a `.tar.gz` file containing:
+
+- `bundle/` - The application bundle directory
+  - `main.js` - Application entry point
+  - `programs/` - Server and client code
+    - `server/` - Server-side code and npm dependencies
+    - `web.browser/` - Client-side code
+  - `.node_version.txt` - Required Node.js version
+  - `star.json` - Bundle metadata
+
+## Deployment Steps
+
+<Steps>
+  <Step title="Build the Application">
+    Create the deployment bundle:
+    
+    ```bash
+    npm install --production
+    meteor build /path/to/build --architecture os.linux.x86_64
+    ```
+  </Step>
+  
+  <Step title="Transfer to Server">
+    Copy the `.tar.gz` file to your server:
+    
+    ```bash
+    scp /path/to/build/*.tar.gz user@server:/path/to/deploy/
+    ```
+  </Step>
+  
+  <Step title="Extract the Bundle">
+    On the server, extract the bundle:
+    
+    ```bash
+    cd /path/to/deploy
+    tar -xzf *.tar.gz
+    ```
+  </Step>
+  
+  <Step title="Install Server Dependencies">
+    Install Node.js dependencies for the server bundle:
+    
+    ```bash
+    cd bundle/programs/server
+    npm install --production
+    ```
+  </Step>
+  
+  <Step title="Run the Application">
+    Start the application with required environment variables:
+    
+    ```bash
+    cd /path/to/deploy/bundle
+    MONGO_URL=mongodb://localhost:27017/myapp \
+    ROOT_URL=http://my-app.com \
+    PORT=3000 \
+    node main.js
+    ```
+  </Step>
+</Steps>
+
+## Required Environment Variables
+
+Your Meteor application requires these environment variables to run:
+
+### ROOT_URL
+
+The base URL for your Meteor project:
+
+```bash
+ROOT_URL=https://my-app.com
+```
+
+This is used to generate URLs to your application by various packages, including the accounts package.
+
+### MONGO_URL
+
+A [MongoDB connection string URI](https://docs.mongodb.com/manual/reference/connection-string/):
+
+```bash
+MONGO_URL=mongodb://user:password@host:port/database
+```
+
+<Tip>
+In production, you must specify a `MONGO_URL`. In development, Meteor automatically connects to a local MongoDB instance.
+</Tip>
+
+### PORT
+
+The port at which the application is running:
+
+```bash
+PORT=3000
+```
+
+### METEOR_SETTINGS (Optional)
+
+Settings as a stringified JSON object:
+
+```bash
+METEOR_SETTINGS='{"public":{"analyticsKey":"xyz"}}'
+```
+
+## Node.js Version
+
+The environment you choose will need the correct version of Node.js and connectivity to a MongoDB server.
+
+To find out which version of Node you should use:
+
+1. Run `meteor node -v` in the development environment
+2. Check the `.node_version.txt` file within the bundle
+3. For Meteor 3.x, you'll need Node.js 20.x
+
+<Warning>
+If you use a mismatched version of Node when deploying your application, you will encounter errors!
+</Warning>
+
+## Example Deployment Script
+
+Here's a complete deployment script you can adapt:
+
+```bash deploy.sh
+#!/bin/bash
+
+# Configuration
+APP_NAME="my-meteor-app"
+DEPLOY_DIR="/var/www/$APP_NAME"
+BUILD_DIR="/tmp/meteor-build"
+MONGO_URL="mongodb://localhost:27017/$APP_NAME"
+ROOT_URL="https://my-app.com"
+PORT=3000
+
+# Build the application
+echo "Building application..."
+meteor npm install --production
+meteor build $BUILD_DIR --architecture os.linux.x86_64
+
+# Stop the running application
+echo "Stopping application..."
+pm2 stop $APP_NAME || true
+
+# Extract the bundle
+echo "Extracting bundle..."
+cd $DEPLOY_DIR
+tar -xzf $BUILD_DIR/*.tar.gz
+
+# Install dependencies
+echo "Installing dependencies..."
+cd bundle/programs/server
+npm install --production
+
+# Start the application
+echo "Starting application..."
+cd $DEPLOY_DIR/bundle
+PORT=$PORT \
+ROOT_URL=$ROOT_URL \
+MONGO_URL=$MONGO_URL \
+pm2 start main.js --name $APP_NAME
+
+echo "Deployment complete!"
+```
+
+## Process Management
+
+For production deployments, use a process manager to keep your application running:
+
+### PM2
+
+[PM2](https://pm2.keymetrics.io/) is a popular Node.js process manager:
+
+```bash
+# Install PM2
+npm install -g pm2
+
+# Start your app with PM2
+cd /path/to/deploy/bundle
+pm2 start main.js \
+  --name my-meteor-app \
+  -i max \
+  --env production
+
+# Set environment variables
+pm2 set my-meteor-app:ROOT_URL https://my-app.com
+pm2 set my-meteor-app:MONGO_URL mongodb://localhost:27017/myapp
+pm2 set my-meteor-app:PORT 3000
+
+# Save PM2 configuration
+pm2 save
+
+# Setup PM2 to start on system boot
+pm2 startup
+```
+
+### Systemd Service
+
+Alternatively, create a systemd service:
+
+```ini /etc/systemd/system/meteor-app.service
+[Unit]
+Description=Meteor Application
+After=network.target
+
+[Service]
+Type=simple
+User=meteor
+WorkingDirectory=/var/www/my-meteor-app/bundle
+Environment="ROOT_URL=https://my-app.com"
+Environment="MONGO_URL=mongodb://localhost:27017/myapp"
+Environment="PORT=3000"
+ExecStart=/usr/bin/node main.js
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start the service:
+
+```bash
+sudo systemctl enable meteor-app
+sudo systemctl start meteor-app
+sudo systemctl status meteor-app
+```
+
+## Reverse Proxy Setup
+
+For production deployments, use a reverse proxy like Nginx to:
+
+- Handle SSL/TLS termination
+- Serve static files efficiently
+- Load balance across multiple instances
+- Add security headers
+
+### Nginx Configuration
+
+```nginx /etc/nginx/sites-available/meteor-app
+upstream meteor_app {
+  server 127.0.0.1:3000;
+}
+
+server {
+  listen 80;
+  server_name my-app.com;
+  return 301 https://$server_name$request_uri;
+}
+
+server {
+  listen 443 ssl http2;
+  server_name my-app.com;
+
+  ssl_certificate /etc/letsencrypt/live/my-app.com/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/my-app.com/privkey.pem;
+
+  location / {
+    proxy_pass http://meteor_app;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    
+    # WebSocket support
+    proxy_read_timeout 86400;
+  }
+}
+```
+
+## Meteor Up Alternative
+
+[Meteor Up](https://meteor-up.com) (mup) is a third-party, open-source tool that automates the manual steps of using `meteor build` and deploying to your server.
+
+Meteor Up can SSH into any server running Ubuntu or Debian and handle the deployment process for you.
+
+Get started with the [Meteor Up tutorial](https://meteor-up.com/getting-started.html).
+
+### Key Features
+
+- Automated deployment via SSH
+- Docker-based deployments
+- Zero-downtime deployments
+- SSL certificate management
+- MongoDB setup and management
+- Environment variable management
+- Deployment rollback support
+
+### AWS Elastic Beanstalk Plugin
+
+The [mup-aws-beanstalk](https://github.com/zodern/mup-aws-beanstalk/) plugin deploys Meteor apps to AWS Elastic Beanstalk instead of a server. It supports:
+
+- Autoscaling
+- Load balancing
+- Zero downtime deploys
+- Managed infrastructure
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Process Managers">
+    Always use a process manager like PM2 or systemd to ensure your application restarts automatically on crashes or server reboots.
+  </Accordion>
+  
+  <Accordion title="Implement Reverse Proxy">
+    Use Nginx or similar reverse proxy for SSL termination, static file serving, and additional security.
+  </Accordion>
+  
+  <Accordion title="Build for Correct Architecture">
+    Always specify the correct architecture when building to avoid runtime errors.
+  </Accordion>
+  
+  <Accordion title="Version Control Deployments">
+    Keep track of deployed versions and maintain deployment scripts in version control.
+  </Accordion>
+  
+  <Accordion title="Monitor Application Health">
+    Implement health checks and monitoring to detect issues early.
+  </Accordion>
+  
+  <Accordion title="Backup MongoDB Regularly">
+    Set up automated MongoDB backups to prevent data loss.
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+### Build Errors
+
+- Ensure all npm dependencies are installed before building
+- Check that you have enough disk space for the build
+- Verify you're using a supported Node.js version
+
+### Runtime Errors
+
+- Check that all environment variables are set correctly
+- Verify MongoDB is accessible and credentials are correct
+- Ensure the Node.js version matches the one used to build
+- Check application logs for specific error messages
+
+### Connection Issues
+
+- Verify firewall rules allow traffic on the specified port
+- Check that reverse proxy is properly configured
+- Ensure WebSocket connections are supported
+- Verify ROOT_URL matches the actual domain
+
+### Performance Issues
+
+- Use a production MongoDB with proper indexing
+- Implement caching strategies
+- Configure CDN for static assets
+- Use WebAppInternals.setBundledJsCssPrefix() for CDN
+- Monitor resource usage (CPU, memory, disk)
+
+## Additional Resources
+
+- [Meteor Up Documentation](https://meteor-up.com)
+- [PM2 Documentation](https://pm2.keymetrics.io/docs/)
+- [Nginx Documentation](https://nginx.org/en/docs/)
+- [MongoDB Connection Strings](https://docs.mongodb.com/manual/reference/connection-string/)
+- [systemd Service Documentation](https://www.freedesktop.org/software/systemd/man/systemd.service.html)

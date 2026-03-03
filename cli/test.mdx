@@ -1,0 +1,237 @@
+---
+title: meteor test
+description: Run tests for your Meteor application
+---
+
+The `meteor test` command runs tests against your Meteor application using a test driver package.
+
+## Usage
+
+```bash
+meteor test --driver-package <driver> [options]
+meteor test --full-app --driver-package <driver> [options]
+```
+
+## Basic Usage
+
+Run tests with a test driver:
+
+```bash
+meteor test --driver-package meteortesting:mocha
+```
+
+## Test Modes
+
+### Normal Test Mode
+
+In normal `meteor test` mode:
+
+- No application files are eagerly loaded
+- Only test files are loaded (files named `*.test[s].*` or `*.spec[s].*`)
+- These test modules can import application modules to test application logic
+
+```bash
+meteor test --driver-package meteortesting:mocha
+```
+
+### Full App Test Mode
+
+In `meteor test --full-app` mode:
+
+- Your app is loaded as usual, then hidden
+- Tests can inspect and interact with the full running application
+- Test files must be named `*.app-test[s].*` or `*.app-spec[s].*`
+
+```bash
+meteor test --full-app --driver-package meteortesting:mocha
+```
+
+## Custom Test Module
+
+As of Meteor 1.7, you can override the default test loading rules by including a `meteor.testModule` section in your `package.json`:
+
+```json
+{
+  "meteor": {
+    "testModule": {
+      "client": "client/tests.js",
+      "server": "server/tests.js"
+    }
+  }
+}
+```
+
+If client and server test files are the same:
+
+```json
+{
+  "meteor": {
+    "testModule": "tests.js"
+  }
+}
+```
+
+When `meteor.testModule` is defined:
+
+- The same test module is loaded whether or not you use `--full-app`
+- Tests can check `Meteor.isAppTest` to determine if `--full-app` was used
+- The specified module can import other test modules at runtime
+
+## Options
+
+<ParamField path="--driver-package" type="string" required>
+  Test driver package to use to run tests and display results (e.g., `meteortesting:mocha`, `practicalmeteor:mocha`)
+</ParamField>
+
+<ParamField path="--port" type="string" default="3000">
+  Port to listen on (also uses port N+1 and N+2)
+</ParamField>
+
+<ParamField path="--open" type="boolean" default="false">
+  Opens a browser window when the app starts
+</ParamField>
+
+<ParamField path="--inspect" type="string">
+  Enable server-side debugging via debugging clients. Optionally specify a port (default: 9229).
+</ParamField>
+
+<ParamField path="--inspect-brk" type="string">
+  Enable server-side debugging with the server paused at startup. Optionally specify a port (default: 9229).
+</ParamField>
+
+<ParamField path="--mobile-server" type="string">
+  If running tests in an emulator or on a mobile device, the location where mobile builds connect to the Meteor server. Defaults to your local IP and the port that the Meteor server binds to. Can include a URL scheme (e.g., `--mobile-server=https://example.com:443`).
+</ParamField>
+
+<ParamField path="--cordova-server-port" type="string">
+  Local port where Cordova will serve content. Important when multiple Cordova apps are built from the same Meteor app source code.
+</ParamField>
+
+<ParamField path="--raw-logs" type="boolean" default="true">
+  Run without parsing logs from stdout and stderr
+</ParamField>
+
+<ParamField path="--timestamps" type="boolean" default="false">
+  Run with timestamps in logs (same as passing `--raw-logs=false`)
+</ParamField>
+
+<ParamField path="--settings" type="string">
+  Set optional data for Meteor.settings on the server. Provide a path to a JSON file.
+</ParamField>
+
+<ParamField path="--ios" type="boolean" default="false">
+  Run tests on the iOS simulator
+</ParamField>
+
+<ParamField path="--android" type="boolean" default="false">
+  Run tests on the Android emulator
+</ParamField>
+
+<ParamField path="--ios-device" type="boolean" default="false">
+  Run tests on a connected iOS device
+</ParamField>
+
+<ParamField path="--android-device" type="boolean" default="false">
+  Run tests on a connected Android device
+</ParamField>
+
+<ParamField path="--test-app-path" type="string">
+  Set the directory in which to create a temporary app used for tests. Defaults to the system's temporary directory (usually `/tmp`).
+</ParamField>
+
+<ParamField path="--verbose" type="boolean" default="false">
+  Print all output from build logs
+</ParamField>
+
+<ParamField path="--extra-packages" type="string">
+  Run with additional packages (comma-separated, e.g., `--extra-packages "package-name1, package-name2@1.2.3"`)
+</ParamField>
+
+<ParamField path="--exclude-archs" type="string">
+  Don't create test bundles for certain web architectures (comma-separated, e.g., `--exclude-archs "web.browser.legacy, web.cordova"`)
+</ParamField>
+
+## Examples
+
+Run tests with Mocha:
+
+```bash
+meteor test --driver-package meteortesting:mocha
+```
+
+Run full-app tests:
+
+```bash
+meteor test --full-app --driver-package meteortesting:mocha
+```
+
+Run tests on a custom port:
+
+```bash
+meteor test --driver-package meteortesting:mocha --port 4000
+```
+
+Run tests with settings:
+
+```bash
+meteor test --driver-package meteortesting:mocha --settings test-settings.json
+```
+
+Run tests on Android:
+
+```bash
+meteor test --driver-package meteortesting:mocha --android
+```
+
+Run tests with debugging enabled:
+
+```bash
+meteor test --driver-package meteortesting:mocha --inspect-brk
+```
+
+## Test Drivers
+
+Popular test driver packages:
+
+- `meteortesting:mocha` - Modern Mocha test driver
+- `practicalmeteor:mocha` - Older Mocha test driver
+- `meteortesting:browser-tests` - Browser-based testing
+
+Install a test driver:
+
+```bash
+meteor add meteortesting:mocha
+```
+
+## Test File Naming
+
+### Normal Test Mode
+
+Files matching these patterns are loaded as tests:
+
+- `*.test.js`
+- `*.tests.js`
+- `*.spec.js`
+- `*.specs.js`
+
+### Full App Test Mode
+
+Files matching these patterns are loaded as tests:
+
+- `*.app-test.js`
+- `*.app-tests.js`
+- `*.app-spec.js`
+- `*.app-specs.js`
+
+## Running Tests
+
+Once your application starts in testing mode:
+
+1. Open the test dashboard in your browser (default: `http://localhost:3000`)
+2. Tests run automatically
+3. Results are displayed in the browser
+4. Tests re-run when relevant source files are modified
+
+## Learn More
+
+Read more about testing in the [Meteor Testing Guide](https://guide.meteor.com/testing.html).

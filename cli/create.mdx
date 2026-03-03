@@ -1,0 +1,227 @@
+---
+title: meteor create
+description: Create a new Meteor project
+---
+
+The `meteor create` command creates a new Meteor application or package.
+
+## Usage
+
+```bash
+meteor create [options] <path>
+meteor create --example <example-name> [path]
+meteor create --from <git-url> [path]
+meteor create --list
+meteor create --package [package-name]
+```
+
+## Creating Applications
+
+Create a new Meteor app in the specified directory:
+
+```bash
+meteor create my-app
+```
+
+You can pass an absolute path, relative path, or `.` for the current directory.
+
+### App Templates
+
+Meteor provides several starter templates:
+
+```bash
+# React (default)
+meteor create my-app --react
+
+# TypeScript with React
+meteor create my-app --typescript
+
+# Vue 3
+meteor create my-app --vue
+
+# Svelte
+meteor create my-app --svelte
+
+# Blaze
+meteor create my-app --blaze
+
+# Apollo
+meteor create my-app --apollo
+
+# Solid
+meteor create my-app --solid
+
+# Angular
+meteor create my-app --angular
+```
+
+### Minimal Templates
+
+```bash
+# Empty app
+meteor create my-app --bare
+
+# App with minimal packages
+meteor create my-app --minimal
+
+# Fully scaffolded app
+meteor create my-app --full
+```
+
+### UI Framework Templates
+
+```bash
+# React with Tailwind CSS
+meteor create my-app --tailwind
+
+# React with Chakra UI
+meteor create my-app --chakra-ui
+```
+
+### Other Templates
+
+```bash
+# React with Babel
+meteor create my-app --babel
+
+# CoffeeScript
+meteor create my-app --coffeescript
+```
+
+## Creating from Examples
+
+List available example applications:
+
+```bash
+meteor create --list
+```
+
+Create a project from an example:
+
+```bash
+meteor create my-app --example <example-name>
+```
+
+## Creating from Git Repository
+
+Clone a Meteor project from a Git URL:
+
+```bash
+meteor create my-app --from https://github.com/user/repo
+```
+
+## Creating Packages
+
+Create a new Meteor package:
+
+```bash
+meteor create --package [package-name]
+```
+
+If you're in an app, the package will be created in the app's top-level `packages` directory. Otherwise, it will be created in the current directory.
+
+## Options
+
+<ParamField path="--package" type="boolean">
+  Create a new Meteor package instead of an app
+</ParamField>
+
+<ParamField path="--example" type="string">
+  Create from an example template
+</ParamField>
+
+<ParamField path="--from" type="string">
+  Clone a Meteor project from a Git URL
+</ParamField>
+
+<ParamField path="--list" type="boolean">
+  Show list of available examples
+</ParamField>
+
+<ParamField path="--bare" type="boolean">
+  Create an empty app
+</ParamField>
+
+<ParamField path="--minimal" type="boolean">
+  Create an app with as few Meteor packages as possible
+</ParamField>
+
+<ParamField path="--full" type="boolean">
+  Create a fully scaffolded app
+</ParamField>
+
+<ParamField path="--react" type="boolean">
+  Create a basic React-based app (default)
+</ParamField>
+
+<ParamField path="--vue" type="boolean">
+  Create a basic Vue 3-based app
+</ParamField>
+
+<ParamField path="--typescript" type="boolean">
+  Create a basic TypeScript React-based app
+</ParamField>
+
+<ParamField path="--apollo" type="boolean">
+  Create a basic Apollo-based app
+</ParamField>
+
+<ParamField path="--svelte" type="boolean">
+  Create a basic Svelte-based app
+</ParamField>
+
+<ParamField path="--blaze" type="boolean">
+  Create a basic Blaze-based app
+</ParamField>
+
+<ParamField path="--tailwind" type="boolean">
+  Create a React app with Tailwind CSS configured
+</ParamField>
+
+<ParamField path="--chakra-ui" type="boolean">
+  Create a React app with Chakra UI configured
+</ParamField>
+
+<ParamField path="--solid" type="boolean">
+  Create a basic Solid-based app
+</ParamField>
+
+<ParamField path="--angular" type="boolean">
+  Create a basic Angular app
+</ParamField>
+
+<ParamField path="--babel" type="boolean">
+  Create a React app with Babel support
+</ParamField>
+
+<ParamField path="--coffeescript" type="boolean">
+  Create a basic CoffeeScript app with React
+</ParamField>
+
+<ParamField path="--prototype" type="boolean">
+  Create a prototype app with the insecure and autopublish packages. Can be used with other app templates
+</ParamField>
+
+<ParamField path="--release" type="string">
+  Specify the release of Meteor to use
+</ParamField>
+
+## Examples
+
+Create a React app in the current directory:
+
+```bash
+meteor create . --react
+```
+
+Create a TypeScript app with a specific release:
+
+```bash
+meteor create my-app --typescript --release 2.15
+```
+
+Create a prototype app with autopublish and insecure:
+
+```bash
+meteor create my-app --react --prototype
+```

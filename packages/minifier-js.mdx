@@ -1,0 +1,337 @@
+---
+title: minifier-js
+description: JavaScript minifier using Terser for production builds
+---
+
+The `minifier-js` package provides JavaScript minification capabilities for Meteor applications using the Terser minifier. It's automatically used during production builds to reduce bundle sizes.
+
+## Overview
+
+This package exports the `meteorJsMinify` function that minifies JavaScript code asynchronously using Terser 5.31.0. It's designed to work seamlessly with Meteor's build system and includes smart defaults for optimal production code.
+
+## Dependencies
+
+```json
+{
+  "terser": "5.31.0"
+}
+```
+
+## Installation
+
+The package is included by default in Meteor's standard build chain. For manual use:
+
+```javascript
+api.use('minifier-js', 'server');
+```
+
+## API
+
+### meteorJsMinify(source)
+
+Minifies JavaScript source code using Terser.
+
+**Parameters:**
+- `source` (string): JavaScript code to minify
+
+**Returns:** Promise\<Object\>
+- `code` (string): Minified JavaScript code
+- `minifier` (string): Always returns `'terser'`
+
+**Example:**
+```javascript
+import { meteorJsMinify } from 'meteor/minifier-js';
+
+const source = `
+  function hello(name) {
+    console.log("Hello, " + name);
+    debugger;
+  }
+`;
+
+const result = await meteorJsMinify(source);
+console.log(result.code);
+// Output: minified code without debugger statement
+console.log(result.minifier);
+// Output: 'terser'
+```
+
+## Configuration
+
+The minifier uses the following Terser options:
+
+```javascript:packages/minifier-js/minifier.js
+const options = {
+  compress: {
+    drop_debugger: false,  // Keep debugger statements
+    unused: false,         // Keep unreferenced functions/variables
+    dead_code: true,       // Remove unreachable code
+    typeofs: false,        // Disable typeof optimizations (IE10 compatibility)
+    global_defs: {
+      "process.env.NODE_ENV": NODE_ENV  // Define NODE_ENV globally
+    }
+  },
+  safari10: true          // Work around Safari 10/11 await bug
+};
+```
+
+### Compression Options
+
+**drop_debugger: false**
+- Keeps `debugger;` statements in production
+- Allows debugging in production when needed
+- Can be useful for troubleshooting live issues
+
+**unused: false**
+- Preserves unreferenced functions and variables
+- Prevents issues with dynamic code access
+- Safer for Meteor's dynamic loading patterns
+
+**dead_code: true**
+- Removes unreachable code paths
+- Eliminates code after `return`, `throw`, `break`, or `continue`
+- Reduces bundle size without breaking functionality
+
+**typeofs: false**
+- Disables typeof optimization
+- Fixes known issues in Internet Explorer 10
+- See: [UglifyJS Issue #1753](https://github.com/mishoo/UglifyJS2/issues/1753#issuecomment-324814782)
+
+**global_defs**
+- Defines `process.env.NODE_ENV` at compile time
+- Enables dead code elimination for environment checks
+- Example:
+  ```javascript
+  if (process.env.NODE_ENV === 'development') {
+    // This code is removed in production
+    console.log('Debug info');
+  }
+  ```
+
+### Safari 10 Fix
+
+**safari10: true**
+- Works around the Safari 10/11 async/await bug
+- Prevents runtime errors with async functions
+- See: [Terser Issue #117](https://github.com/terser-js/terser/issues/117)
+
+## NODE_ENV Handling
+
+The minifier respects the `NODE_ENV` environment variable:
+
+```javascript:packages/minifier-js/minifier.js
+const NODE_ENV = process.env.NODE_ENV || "development";
+```
+
+**Usage:**
+```bash
+# Development build
+NODE_ENV=development meteor build ../output
+
+# Production build (default)
+meteor build ../output
+```
+
+Code optimizations based on NODE_ENV:
+```javascript
+// Source code
+if (process.env.NODE_ENV === 'production') {
+  // Optimized production code
+} else {
+  // Development helpers and logging
+}
+
+// In production build, development branch is completely removed
+```
+
+## Integration
+
+### Build Plugin
+
+The minifier is used by Meteor's build system during production builds:
+
+```javascript
+Package.describe({
+  summary: "JavaScript minifier",
+  version: '3.1.0',
+});
+
+Package.onUse(function (api) {
+  api.use('ecmascript');
+  api.use('babel-compiler');
+  api.mainModule('minifier.js', 'server');
+  api.export('meteorJsMinify');
+});
+```
+
+### Custom Minification
+
+For custom build processes:
+
+```javascript
+import { meteorJsMinify } from 'meteor/minifier-js';
+
+const customMinify = async (files) => {
+  const minified = [];
+  
+  for (const file of files) {
+    const result = await meteorJsMinify(file.contents);
+    minified.push({
+      path: file.path,
+      contents: result.code
+    });
+  }
+  
+  return minified;
+};
+```
+
+## Performance
+
+The minifier is:
+- **Asynchronous**: Uses async/await for non-blocking minification
+- **Lazy-loaded**: Terser is loaded on first use to improve startup time
+- **Compatible**: Works with Meteor's caching system
+
+```javascript:packages/minifier-js/minifier.js
+let terser;
+
+const terserMinify = async (source, options) => {
+  terser = terser || Npm.require("terser");
+  return await terser.minify(source, options);
+};
+```
+
+## Backwards Compatibility
+
+The package maintains backwards compatibility:
+
+```javascript:packages/minifier-js/minifier.js
+// This is kept to maintain backwards compatibility
+result.code = terserResult.code;
+result.minifier = 'terser';
+```
+
+Previous versions may have returned different properties, but current version ensures:
+- `result.code` - Always contains minified code
+- `result.minifier` - Always set to `'terser'`
+
+## Best Practices
+
+### Environment-Specific Code
+
+Use environment checks for code splitting:
+
+```javascript
+if (process.env.NODE_ENV === 'development') {
+  // Development-only code (removed in production)
+  console.log('App state:', state);
+  window.debugAPI = api;
+}
+
+if (process.env.NODE_ENV === 'production') {
+  // Production-only code
+  enableAnalytics();
+}
+```
+
+### Preserve Important Code
+
+Avoid patterns that might be incorrectly removed:
+
+```javascript
+// Bad: Might be marked as unused
+const unusedButNeeded = function() {
+  // Used via string reference elsewhere
+};
+
+// Good: Explicitly used
+const needed = function() {
+  // ...
+};
+export { needed };
+```
+
+### Debugging Production
+
+Since `drop_debugger: false`, you can use debugger statements:
+
+```javascript
+function criticalFunction() {
+  // This debugger will remain in production
+  debugger;
+  // Critical code
+}
+```
+
+## Testing
+
+The package includes comprehensive tests:
+
+```javascript
+Package.onTest(function (api) {
+  api.use('ecmascript');
+  api.use('tinytest');
+  api.use('minifier-js');
+  api.mainModule('minifier-tests.js', 'server');
+});
+```
+
+Run tests:
+```bash
+meteor test-packages ./packages/minifier-js
+```
+
+## Common Issues
+
+### Issue: Code breaks after minification
+
+**Solution:** Check for:
+- Missing semicolons
+- Reserved keyword usage
+- Eval or Function constructor usage
+- Dynamic property access
+
+### Issue: Larger bundle than expected
+
+**Solution:** Verify:
+- `unused: false` prevents removal of seemingly unused code
+- Environment-specific code is properly wrapped in `process.env.NODE_ENV` checks
+- No circular dependencies preventing tree-shaking
+
+### Issue: Safari compatibility issues
+
+**Solution:** 
+- The `safari10: true` option is already enabled
+- Ensure you're using supported async/await patterns
+- Test in Safari 10/11 if targeting those versions
+
+## Alternatives
+
+For different minification strategies:
+
+```javascript
+// Custom Terser options
+import terser from 'terser';
+
+const customMinify = async (code) => {
+  return await terser.minify(code, {
+    compress: {
+      drop_debugger: true,    // Remove debugger
+      unused: true,           // Remove unused code
+      dead_code: true,
+      passes: 2               // Multiple passes for better compression
+    },
+    mangle: {
+      toplevel: true          // Mangle top-level variables
+    }
+  });
+};
+```
+
+## Version History
+
+- **3.1.0** - Current version using Terser 5.31.0
+- Uses Terser instead of legacy UglifyJS
+- Async-first API
+- Safari 10/11 compatibility built-in

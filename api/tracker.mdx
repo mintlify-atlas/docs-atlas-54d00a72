@@ -1,0 +1,375 @@
+---
+title: 'Tracker'
+description: 'Reactive computation and dependency tracking'
+---
+
+# Tracker API
+
+Tracker is Meteor's reactivity system. It allows you to automatically rerun functions when data changes.
+
+Source: `packages/tracker/tracker.js`
+
+## Core Functions
+
+### Tracker.autorun()
+
+Run a function now and rerun it later whenever its dependencies change. Returns a Computation object that can be used to stop or observe the rerunning.
+
+**Locus:** Client
+
+<ParamField body="runFunc" type="function" required>
+  The function to run. It receives one argument: the Computation object that will be returned.
+</ParamField>
+
+<ParamField body="options" type="object">
+  Optional options object.
+</ParamField>
+
+<ResponseField name="options.onError" type="function">
+  Optional function to run when an error happens in the Computation. The only argument it receives is the Error thrown. Defaults to the error being logged to the console.
+</ResponseField>
+
+**Returns:** `Tracker.Computation`
+
+```javascript
+// Basic usage
+const computation = Tracker.autorun(() => {
+  const user = Meteor.user();
+  console.log('User changed:', user);
+});
+
+// With error handler
+Tracker.autorun((computation) => {
+  const data = ReactiveVar.get();
+  if (!data) {
+    throw new Error('No data');
+  }
+}, {
+  onError(error) {
+    console.error('Computation error:', error);
+  }
+});
+
+// Stop the computation
+computation.stop();
+```
+
+**Async Support:**
+```javascript
+const computation = Tracker.autorun(async () => {
+  const user = await Meteor.userAsync();
+  console.log('User:', user);
+});
+
+// Wait for first run to complete
+await computation;
+```
+
+### Tracker.nonreactive()
+
+Run a function without tracking dependencies.
+
+**Locus:** Client
+
+<ParamField body="func" type="function" required>
+  A function to call immediately.
+</ParamField>
+
+```javascript
+Tracker.autorun(() => {
+  const reactiveValue = Session.get('value');
+  
+  // This won't create a dependency
+  const nonReactiveValue = Tracker.nonreactive(() => {
+    return Session.get('otherValue');
+  });
+  
+  console.log(reactiveValue, nonReactiveValue);
+});
+```
+
+### Tracker.flush()
+
+Process all reactive updates immediately and ensure that all invalidated computations are rerun.
+
+**Locus:** Client
+
+```javascript
+Session.set('value', 1);
+Session.set('value', 2);
+Session.set('value', 3);
+
+// Force all pending updates to process now
+Tracker.flush();
+```
+
+### Tracker.onInvalidate()
+
+Registers a new `onInvalidate` callback on the current computation, to be called immediately when the current computation is invalidated or stopped.
+
+**Locus:** Client
+
+<ParamField body="callback" type="function" required>
+  A callback function that will be invoked as `func(c)`, where `c` is the computation on which the callback is registered.
+</ParamField>
+
+```javascript
+Tracker.autorun(() => {
+  const value = Session.get('value');
+  
+  Tracker.onInvalidate(() => {
+    console.log('Computation is being invalidated');
+  });
+  
+  console.log('Current value:', value);
+});
+```
+
+### Tracker.afterFlush()
+
+Schedules a function to be called during the next flush, or later in the current flush if one is in progress, after all invalidated computations have been rerun.
+
+**Locus:** Client
+
+<ParamField body="callback" type="function" required>
+  A function to call at flush time.
+</ParamField>
+
+```javascript
+Session.set('value', 'new');
+Tracker.afterFlush(() => {
+  console.log('All computations have updated');
+});
+```
+
+## Tracker.Computation
+
+A Computation object represents code that is repeatedly rerun in response to reactive data changes.
+
+### Properties
+
+<ResponseField name="stopped" type="boolean">
+  True if this computation has been stopped.
+</ResponseField>
+
+<ResponseField name="invalidated" type="boolean">
+  True if this computation has been invalidated (and not yet rerun), or if it has been stopped.
+</ResponseField>
+
+<ResponseField name="firstRun" type="boolean">
+  True during the initial run of the computation at the time `Tracker.autorun` is called, and false on subsequent reruns and at other times.
+</ResponseField>
+
+### Methods
+
+#### computation.stop()
+
+Prevents this computation from rerunning.
+
+**Locus:** Client
+
+```javascript
+const computation = Tracker.autorun(() => {
+  const value = Session.get('value');
+  console.log('Value:', value);
+});
+
+// Stop the computation
+computation.stop();
+```
+
+#### computation.invalidate()
+
+Invalidates this computation so that it will be rerun.
+
+**Locus:** Client
+
+```javascript
+const computation = Tracker.autorun(() => {
+  console.log('Running computation');
+});
+
+// Manually invalidate
+computation.invalidate();
+```
+
+#### computation.onInvalidate()
+
+Registers a callback to run when this computation is next invalidated, or runs it immediately if the computation is already invalidated.
+
+**Locus:** Client
+
+<ParamField body="callback" type="function" required>
+  Function to be called on invalidation. Receives one argument: the computation that was invalidated.
+</ParamField>
+
+```javascript
+const computation = Tracker.autorun(() => {
+  const value = Session.get('value');
+  
+  computation.onInvalidate((c) => {
+    console.log('Computation invalidated:', c);
+  });
+});
+```
+
+#### computation.onStop()
+
+Registers a callback to run when this computation is stopped, or runs it immediately if the computation is already stopped.
+
+**Locus:** Client
+
+<ParamField body="callback" type="function" required>
+  Function to be called on stop. Receives one argument: the computation that was stopped.
+</ParamField>
+
+```javascript
+const computation = Tracker.autorun(() => {
+  const value = Session.get('value');
+  
+  computation.onStop(() => {
+    console.log('Computation stopped, cleaning up...');
+  });
+});
+```
+
+#### computation.flush()
+
+Process the reactive updates for this computation immediately and ensure that the computation is rerun.
+
+**Locus:** Client
+
+```javascript
+computation.flush();
+```
+
+#### computation.run()
+
+Causes the function inside this computation to run and synchronously process all reactive updates.
+
+**Locus:** Client
+
+```javascript
+computation.run();
+```
+
+## Tracker.Dependency
+
+A Dependency represents an atomic unit of reactive data that a computation might depend on.
+
+### Constructor
+
+```javascript
+const dep = new Tracker.Dependency();
+```
+
+### Methods
+
+#### dependency.depend()
+
+Declares that the current computation depends on this dependency.
+
+**Locus:** Client
+
+<ParamField body="fromComputation" type="Tracker.Computation">
+  An optional computation declared to depend on this dependency instead of the current computation.
+</ParamField>
+
+**Returns:** `boolean` - True if the computation is a new dependent of this dependency rather than an existing one.
+
+```javascript
+const dep = new Tracker.Dependency();
+
+Tracker.autorun(() => {
+  dep.depend();
+  console.log('This computation depends on dep');
+});
+```
+
+#### dependency.changed()
+
+Invalidate all dependent computations immediately and remove them as dependents.
+
+**Locus:** Client
+
+```javascript
+const dep = new Tracker.Dependency();
+
+// Trigger all dependents to rerun
+dep.changed();
+```
+
+#### dependency.hasDependents()
+
+True if this Dependency has one or more dependent Computations.
+
+**Locus:** Client
+
+**Returns:** `boolean`
+
+```javascript
+if (dep.hasDependents()) {
+  console.log('This dependency has active dependents');
+}
+```
+
+## Tracker.active
+
+True if there is a current computation.
+
+**Locus:** Client
+
+**Type:** `boolean`
+
+```javascript
+if (Tracker.active) {
+  console.log('Inside a reactive computation');
+}
+```
+
+## Tracker.currentComputation
+
+The current computation, or `null` if there isn't one.
+
+**Locus:** Client
+
+**Type:** `Tracker.Computation`
+
+```javascript
+if (Tracker.currentComputation) {
+  console.log('Current computation ID:', Tracker.currentComputation._id);
+}
+```
+
+## Example: Custom Reactive Data Source
+
+```javascript
+class ReactiveValue {
+  constructor(initialValue) {
+    this._value = initialValue;
+    this._dep = new Tracker.Dependency();
+  }
+  
+  get() {
+    this._dep.depend();
+    return this._value;
+  }
+  
+  set(newValue) {
+    if (this._value !== newValue) {
+      this._value = newValue;
+      this._dep.changed();
+    }
+  }
+}
+
+const myValue = new ReactiveValue(10);
+
+Tracker.autorun(() => {
+  console.log('Value is:', myValue.get());
+});
+// Logs: "Value is: 10"
+
+myValue.set(20);
+// Logs: "Value is: 20"
+```

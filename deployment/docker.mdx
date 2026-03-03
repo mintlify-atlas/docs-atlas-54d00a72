@@ -1,0 +1,334 @@
+---
+title: Docker Deployment
+description: Deploy Meteor applications using Docker containers for flexible orchestration
+---
+
+To orchestrate your own container-based deployment, you can use Docker to package and run your Meteor application. This approach provides flexibility and works with any container orchestration platform like Kubernetes, Docker Swarm, or AWS ECS.
+
+## Base Images
+
+There are two main options for base Docker images:
+
+- **[Official Node.js images](https://hub.docker.com/_/node)** - Use as a base for your custom Dockerfile
+- **[meteor/meteor-base](https://hub.docker.com/r/meteor/meteor-base)** - Official Meteor base images
+
+## Dockerfile Example
+
+Here's a basic Dockerfile example for a Meteor 3 application using a multi-stage build:
+
+```dockerfile
+# Build stage
+FROM node:20-alpine AS builder
+
+RUN apk add --no-cache python3 make g++ git
+
+WORKDIR /app
+COPY . .
+
+# Install Meteor
+RUN curl https://install.meteor.com/ | sh
+
+# Build the application
+RUN meteor npm install --production
+RUN meteor build --directory /build --server-only
+
+# Production stage
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy built application
+COPY --from=builder /build/bundle .
+
+# Install production dependencies
+WORKDIR /app/programs/server
+RUN npm install --production
+
+WORKDIR /app
+
+ENV PORT=3000
+ENV ROOT_URL=http://localhost:3000
+
+EXPOSE 3000
+
+CMD ["node", "main.js"]
+```
+
+## Multi-Stage Build Benefits
+
+The multi-stage build approach provides several advantages:
+
+1. **Smaller Image Size** - Only the production bundle and runtime dependencies are in the final image
+2. **Faster Builds** - Build dependencies are cached in the builder stage
+3. **Security** - Build tools and source code aren't included in the production image
+4. **Optimization** - Separate build and runtime environments
+
+## Building the Docker Image
+
+<Steps>
+  <Step title="Create Dockerfile">
+    Create a `Dockerfile` in the root of your Meteor project with the example above.
+  </Step>
+  
+  <Step title="Build the Image">
+    Build the Docker image:
+    
+    ```bash
+    docker build -t my-meteor-app:latest .
+    ```
+  </Step>
+  
+  <Step title="Test Locally">
+    Run the container locally to test:
+    
+    ```bash
+    docker run -p 3000:3000 \
+      -e ROOT_URL=http://localhost:3000 \
+      -e MONGO_URL=mongodb://localhost:27017/myapp \
+      my-meteor-app:latest
+    ```
+  </Step>
+</Steps>
+
+## Environment Variables
+
+When running your Docker container, you need to set these environment variables:
+
+- `ROOT_URL` - The base URL for your Meteor project (e.g., `https://my-app.com`)
+- `MONGO_URL` - MongoDB connection string URI
+- `PORT` - The port at which the application is running (default: 3000)
+- `METEOR_SETTINGS` - (Optional) Stringified JSON settings object
+
+### Example with Environment Variables
+
+```bash
+docker run -d \
+  --name my-meteor-app \
+  -p 3000:3000 \
+  -e ROOT_URL=https://my-app.com \
+  -e MONGO_URL=mongodb://user:password@mongo:27017/myapp \
+  -e PORT=3000 \
+  my-meteor-app:latest
+```
+
+## Docker Compose
+
+For local development or simple deployments, you can use Docker Compose to manage both your Meteor app and MongoDB:
+
+```yaml docker-compose.yml
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - ROOT_URL=http://localhost:3000
+      - MONGO_URL=mongodb://mongo:27017/myapp
+      - PORT=3000
+    depends_on:
+      - mongo
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:6
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    restart: unless-stopped
+
+volumes:
+  mongo-data:
+```
+
+Run with Docker Compose:
+
+```bash
+docker-compose up -d
+```
+
+## Architecture-Specific Builds
+
+It's important to build your bundle for the correct architecture. If deploying to a Linux server, ensure you build for the correct platform:
+
+```bash
+# For Linux x86_64 (most common)
+meteor build /path/to/build --architecture os.linux.x86_64
+
+# Or use Docker's buildx for multi-platform images
+docker buildx build --platform linux/amd64 -t my-meteor-app:latest .
+```
+
+<Warning>
+If you use a mismatched version of Node or architecture when deploying your application, you will encounter errors. Meteor 3.x requires Node.js 20.x.
+</Warning>
+
+## Node.js Version
+
+To find out which version of Node you should use:
+
+- Run `meteor node -v` in your development environment
+- Check the `.node_version.txt` file within the bundle
+- For Meteor 3.x, you'll need Node.js 20.x
+
+The Dockerfile example uses `node:20-alpine` to match Meteor 3.x requirements.
+
+## Optimizing the Dockerfile
+
+Here are some optimizations you can add to your Dockerfile:
+
+### Layer Caching
+
+```dockerfile
+# Copy package files first for better caching
+COPY package*.json ./
+RUN meteor npm install --production
+
+# Then copy the rest of the application
+COPY . .
+```
+
+### Health Check
+
+```dockerfile
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s \
+  CMD node -e "require('http').get('http://localhost:3000', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+```
+
+### Non-Root User
+
+```dockerfile
+# Run as non-root user for security
+RUN addgroup -g 1001 -S meteor && adduser -S meteor -u 1001
+USER meteor
+```
+
+## Deployment Platforms
+
+Docker containers can be deployed to various platforms:
+
+### Kubernetes
+
+Create Kubernetes manifests for your deployment:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: meteor-app
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: meteor-app
+  template:
+    metadata:
+      labels:
+        app: meteor-app
+    spec:
+      containers:
+      - name: meteor-app
+        image: my-meteor-app:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: ROOT_URL
+          value: "https://my-app.com"
+        - name: MONGO_URL
+          valueFrom:
+            secretKeyRef:
+              name: mongo-secret
+              key: url
+```
+
+### AWS Elastic Beanstalk
+
+You can use [mup-aws-beanstalk](https://github.com/zodern/mup-aws-beanstalk/) to deploy Meteor apps to AWS Elastic Beanstalk. It supports autoscaling, load balancing, and zero downtime deploys.
+
+### DigitalOcean, AWS ECS, Google Cloud Run
+
+All container platforms that support Docker images can run your Meteor application. Just ensure:
+
+- Environment variables are properly set
+- MongoDB is accessible from the container
+- Proper port mapping is configured
+- SSL/TLS termination is handled (via load balancer or reverse proxy)
+
+## rspack Bundler Considerations
+
+Each Meteor release requires specific minimum versions of NPM packages like Rspack. If these were not committed after upgrading Meteor locally, the Docker environment won't have them.
+
+To fix this, run `meteor update --npm` before `meteor npm install` in your Dockerfile:
+
+```dockerfile
+RUN meteor update --npm
+RUN meteor npm install --production
+RUN meteor build --directory /build --server-only
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Multi-Stage Builds">
+    Always use multi-stage builds to keep your production images small and secure. Build stages should contain build tools, while production stages should only have runtime dependencies.
+  </Accordion>
+  
+  <Accordion title="Pin Version Tags">
+    Use specific version tags for base images (e.g., `node:20.11-alpine`) rather than `latest` to ensure reproducible builds.
+  </Accordion>
+  
+  <Accordion title="Optimize Layer Caching">
+    Copy package files before application code so that dependency layers can be cached when only code changes.
+  </Accordion>
+  
+  <Accordion title="Run as Non-Root">
+    Always run your application as a non-root user for better security.
+  </Accordion>
+  
+  <Accordion title="Implement Health Checks">
+    Add health check endpoints and Docker HEALTHCHECK instructions for better orchestration.
+  </Accordion>
+  
+  <Accordion title="Use Environment Variables">
+    Never hardcode configuration. Use environment variables for all environment-specific settings.
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+### Build Failures
+
+- Ensure all native dependencies have the required build tools (python3, make, g++)
+- Check that you're using the correct Node.js version
+- Verify `meteor npm install` completes successfully
+
+### Runtime Errors
+
+- Check environment variables are set correctly
+- Verify MongoDB connection string is accessible from the container
+- Ensure the correct architecture was used for the build
+- Check logs with `docker logs <container-id>`
+
+### Image Size Too Large
+
+- Use Alpine-based images instead of full distributions
+- Implement multi-stage builds properly
+- Clean up build artifacts in the same layer they're created
+- Use `.dockerignore` to exclude unnecessary files
+
+### Performance Issues
+
+- Ensure proper resource limits are set
+- Use production MongoDB with proper indexing
+- Consider using a CDN for static assets
+- Monitor container metrics
+
+## Additional Resources
+
+- [Docker Documentation](https://docs.docker.com/)
+- [Node.js Official Images](https://hub.docker.com/_/node)
+- [Meteor Base Images](https://hub.docker.com/r/meteor/meteor-base)
+- [Kubernetes Documentation](https://kubernetes.io/docs/)
+- [Docker Compose Documentation](https://docs.docker.com/compose/)

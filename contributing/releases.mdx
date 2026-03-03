@@ -1,0 +1,395 @@
+---
+title: Release Process
+description: Understanding Meteor's release process and version management
+---
+
+This guide explains how Meteor releases work, versioning conventions, and the release process for both core and package contributions.
+
+## Meteor Release Structure
+
+Meteor uses a unique release structure where the tool and packages are versioned together.
+
+### Release Components
+
+- **Meteor Tool** - CLI and build system (`meteor` command)
+- **Core Packages** - ~100+ packages that ship with Meteor
+- **Dev Bundle** - Prebuilt binaries (Node.js, npm, MongoDB)
+- **Build System** - Isobuild and compilation tools
+
+### Version Format
+
+Meteor releases follow semantic versioning:
+
+```
+MAJOR.MINOR.PATCH
+```
+
+- **Major** (1.x → 2.x): Breaking changes, major rewrites
+- **Minor** (1.0 → 1.1): New features, package updates
+- **Patch** (1.0.0 → 1.0.1): Bug fixes, security patches
+
+## Tracking Releases
+
+### Release Milestones
+
+Work is tracked in [GitHub Milestones](https://github.com/meteor/meteor/milestones):
+
+- Each milestone represents an upcoming release
+- Issues and PRs are assigned to milestones
+- Progress is visible to the community
+
+### Roadmap
+
+High-level priorities are documented in the [Meteor Roadmap](https://docs.meteor.com/about/roadmap.html).
+
+## Package Versioning
+
+Each Meteor package has its own version independent of the Meteor release.
+
+### Version Bumping Guidelines
+
+When contributing to core packages, bump the version in `package.js`:
+
+#### Patch Version (2.4.5 → 2.4.6)
+
+**Use for:**
+- Bug fixes
+- Performance improvements
+- Documentation updates
+- Changes safe to release independently
+
+**Release:** Can be included in a patch release of Meteor
+
+```javascript
+Package.describe({
+  version: '2.4.6',  // Was 2.4.5
+});
+```
+
+#### Minor Version (2.4.5 → 2.5.0)
+
+**Use for:**
+- New features (backward compatible)
+- Dependency updates
+- Changes affecting multiple packages
+- Changes requiring new Meteor version
+
+**Release:** Requires new Meteor minor version
+
+```javascript
+Package.describe({
+  version: '2.5.0',  // Was 2.4.5
+});
+```
+
+#### Major Version (2.4.5 → 3.0.0)
+
+**Use for:**
+- Breaking API changes
+- Major rewrites
+- Removing deprecated features
+
+**Release:** Requires new Meteor major version
+
+```javascript
+Package.describe({
+  version: '3.0.0',  // Was 2.4.5
+});
+```
+
+<Warning>
+If you bump anything other than the patch version, your changes won't be available until a new Meteor version is released. This is how core packages work.
+</Warning>
+
+## Development Branches
+
+Meteor uses specific branches for development:
+
+### Main Branches
+
+- **`devel`** - Active development, all PRs target this branch
+- **`master`** - Latest stable release
+- **`release-*`** - Release-specific branches
+
+<Warning>
+**Never submit PRs directly to `master`**. All work must be based on the `devel` branch.
+</Warning>
+
+### Branch Workflow
+
+<Steps>
+  <Step title="Create feature branch from devel">
+    ```bash
+    git checkout devel
+    git pull origin devel
+    git checkout -b feature/my-feature
+    ```
+  </Step>
+  
+  <Step title="Make changes and commit">
+    Follow commit message guidelines from the development guide
+  </Step>
+  
+  <Step title="Push and create PR">
+    ```bash
+    git push origin feature/my-feature
+    ```
+    
+    Create PR targeting `devel` branch
+  </Step>
+</Steps>
+
+## Release Process
+
+The release process is managed by core team members with publish access.
+
+### Prerequisites
+
+<Info>
+Only Meteor Software staff and core committers can publish releases. This section is informational for understanding the process.
+</Info>
+
+### Building a Release
+
+From a checkout, the release process involves:
+
+1. **Update versions** in all changed packages
+2. **Run full test suite** to ensure stability
+3. **Build dev bundle** if needed (Node.js, MongoDB updates)
+4. **Generate release** with special tooling
+5. **Publish to package server** and distribution channels
+
+### Publishing Releases
+
+Core team members use:
+
+```bash
+./meteor publish-release --from-checkout
+```
+
+This command:
+- Compiles tool code
+- Builds all packages into Isopacks
+- Publishes to Meteor package server
+- Updates release metadata
+
+## Dev Bundle Updates
+
+Dev bundle changes require special handling.
+
+### When Dev Bundles Change
+
+A new dev bundle is needed when updating:
+
+- Node.js version
+- npm version  
+- MongoDB version
+- TypeScript version
+- Core build tools
+
+### Dev Bundle Workflow
+
+<Steps>
+  <Step title="Update BUNDLE_VERSION">
+    Edit the version in the [`meteor`](https://github.com/meteor/meteor/blob/devel/meteor) script:
+    
+    ```bash
+    BUNDLE_VERSION=3.0.1  # Increment from current
+    ```
+  </Step>
+  
+  <Step title="Build locally">
+    ```bash
+    ./scripts/generate-dev-bundle.sh
+    ```
+  </Step>
+  
+  <Step title="Submit PR">
+    Submit PR with dev bundle changes. CI will initially fail.
+  </Step>
+  
+  <Step title="Request publication">
+    Core team requests Meteor Software to build and publish the bundle
+  </Step>
+  
+  <Step title="CI passes">
+    Once published, CI can download the bundle and tests pass
+  </Step>
+</Steps>
+
+<Info>
+Dev bundle PRs are flagged by collaborators, and a request to build/publish is forwarded to Meteor Software infrastructure team.
+</Info>
+
+## Release Artifacts
+
+Meteor releases produce several artifacts:
+
+### Release Tarball
+
+```bash
+./scripts/make-release-tarballs.sh
+```
+
+Generates:
+- `meteor-bootstrap-*.tar.gz` - Installation bundle
+- Platform-specific binaries
+
+### Package Server
+
+Packages are published to:
+- `packages.meteor.com` - Official package repository
+- `atmospherejs.com` - Package search/documentation
+
+## Release Channels
+
+Meteor has different release channels:
+
+### Stable Releases
+
+Official releases following semantic versioning:
+
+```bash
+meteor update --release 3.0.3
+```
+
+### Beta Releases
+
+Pre-release versions for testing:
+
+```bash
+meteor update --release 3.1-beta.1
+```
+
+### Release Candidates
+
+Near-final versions before stable:
+
+```bash
+meteor update --release 3.1-rc.0
+```
+
+## Contributing to Releases
+
+### Getting Changes into a Release
+
+<Steps>
+  <Step title="Submit quality PR">
+    - Include tests
+    - Follow code style
+    - Update documentation
+    - Bump package version appropriately
+  </Step>
+  
+  <Step title="Get PR reviewed">
+    Core team or reviewers will review and provide feedback
+  </Step>
+  
+  <Step title="PR merged to devel">
+    Once approved, PR is merged to the `devel` branch
+  </Step>
+  
+  <Step title="Wait for next release">
+    Your change will be included in the next appropriate release
+  </Step>
+</Steps>
+
+### Release Timeline
+
+- **Patch releases**: As needed for critical fixes (weeks)
+- **Minor releases**: New features and improvements (months)
+- **Major releases**: Breaking changes and major updates (years)
+
+<Info>
+Release timing depends on the scope of changes, testing requirements, and coordination with the broader ecosystem.
+</Info>
+
+## Continuous Integration
+
+All releases go through extensive CI testing:
+
+### Test Suites
+
+```bash
+# Package tests
+./meteor test-packages
+
+# Tool self-tests  
+./meteor self-test
+
+# Modern E2E tests
+npm run test:modern
+```
+
+### CI Configuration
+
+Defined in:
+- [`circle.yml`](https://github.com/meteor/meteor/blob/devel/circle.yml)
+- [`scripts/ci.sh`](https://github.com/meteor/meteor/blob/devel/scripts/ci.sh)
+
+All platforms tested:
+- Linux (Ubuntu)
+- macOS
+- Windows (limited)
+
+## Release Notes
+
+Each release includes detailed notes:
+
+### What's Included
+
+- New features and improvements
+- Breaking changes
+- Bug fixes
+- Dependency updates
+- Migration guides (for major versions)
+
+### Example
+
+```markdown
+## v3.0.3, 2024-01-15
+
+### Highlights
+- Updated to Node.js 20.x
+- Improved build performance
+- Fixed reactivity edge case
+
+### Breaking Changes
+- None
+
+### Migration
+- No migration needed
+```
+
+View all releases at: [GitHub Releases](https://github.com/meteor/meteor/releases)
+
+## Community Packages
+
+Community packages follow their own release cycles:
+
+### Publishing Community Packages
+
+```bash
+# Login
+meteor login
+
+# Publish for Meteor 3
+meteor publish --release=3.0.3
+
+# Publish for multiple versions
+meteor publish
+```
+
+See the [Contributing Packages](/contributing/packages) guide for details.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Development Setup" icon="code" href="/contributing/development">
+    Set up your environment for contributing
+  </Card>
+  
+  <Card title="Testing Guidelines" icon="flask" href="/contributing/testing">
+    Learn about testing before releases
+  </Card>
+</CardGroup>

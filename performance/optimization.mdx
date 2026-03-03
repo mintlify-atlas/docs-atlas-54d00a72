@@ -1,0 +1,295 @@
+---
+title: Performance Optimization
+description: Comprehensive guide to optimizing Meteor application performance
+---
+
+# Performance Optimization
+
+Optimizing Meteor application performance involves multiple strategies across the build system, runtime, and deployment. This guide covers real-world techniques extracted from the Meteor tooling.
+
+## Build System Optimizations
+
+### Modern Build Stack
+
+Enable the modern build stack for significant performance improvements:
+
+```json
+"meteor": {
+  "modern": true
+}
+```
+
+This enables:
+- **SWC transpiler** - Faster alternative to Babel
+- **SWC minifier** - Replaces legacy Terser minifier
+- **Web arch optimization** - Skips legacy builds in development
+- **Modern watcher** - Uses `@parcel/watcher` for faster file watching
+
+### Transpiler Performance (SWC)
+
+Meteor has adopted SWC as a faster alternative to Babel. SWC provides significant speed improvements during transpilation.
+
+#### Enable SWC Transpilation
+
+Add to your `package.json`:
+
+```json
+"meteor": {
+  "modern": {
+    "transpiler": true
+  }
+}
+```
+
+#### Optimize SWC Performance
+
+Enable verbose mode to identify fallbacks:
+
+```json
+"meteor": {
+  "modern": {
+    "transpiler": {
+      "verbose": true
+    }
+  }
+}
+```
+
+Watch for logs like:
+```shell
+[Transpiler] Used Babel for <file>     (<context>)     Fallback
+```
+
+Common issues:
+- **Nested imports** - Move imports to top level
+- **Missing SWC plugins** - Find SWC equivalents for Babel plugins
+
+#### Externalize SWC Helpers
+
+Reduce bundle size by centralizing SWC transformation helpers:
+
+```bash
+meteor npm install --save @swc/helpers
+```
+
+Meteor automatically externalizes helpers when this package is installed.
+
+### Minification Strategy
+
+Use the SWC-based minifier for faster production builds:
+
+```json
+"meteor": {
+  "modern": {
+    "minifier": true
+  }
+}
+```
+
+The SWC minifier replaces Terser and significantly speeds up production builds and deployments.
+
+### Development Mode Optimizations
+
+#### Skip Legacy Architectures
+
+In development, skip building for legacy browsers and Cordova:
+
+```json
+"meteor": {
+  "modern": {
+    "webArchOnly": true
+  }
+}
+```
+
+This is equivalent to:
+```bash
+meteor run --exclude-archs web.browser.legacy,web.cordova
+```
+
+#### Use Modern Watcher
+
+The modern watcher uses native OS file watching:
+
+```json
+"meteor": {
+  "modern": {
+    "watcher": true
+  }
+}
+```
+
+For edge cases (WSL, volumes, remote setups), enable polling:
+
+```bash
+METEOR_WATCH_FORCE_POLLING=true meteor run
+METEOR_WATCH_POLLING_INTERVAL_MS=1000 METEOR_WATCH_FORCE_POLLING=true meteor run
+```
+
+## Rspack Bundler Integration
+
+For maximum performance, integrate Rspack for modern bundling:
+
+```bash
+meteor add rspack
+```
+
+Benefits:
+- Faster builds and reloads
+- Smaller bundles via tree shaking
+- Native code splitting
+- Hot Module Replacement (HMR)
+- Support for ESM packages
+
+### Split Vendor Chunks
+
+Avoid duplicating libraries in async chunks:
+
+```javascript
+// rspack.config.js
+const { defineConfig } = require('@meteorjs/rspack');
+
+module.exports = defineConfig(Meteor => ({
+  ...Meteor.splitVendorChunk(),
+}));
+```
+
+### Memory Optimization
+
+For large apps hitting memory limits:
+
+```bash
+NODE_OPTIONS="--max-old-space-size=16384" meteor run
+```
+
+Or disable persistent cache:
+
+```javascript
+// rspack.config.js
+module.exports = defineConfig(Meteor => ({
+  ...Meteor.setCache(false),
+}));
+```
+
+## Constraint Solver Performance
+
+The constraint solver can be optimized through several mechanisms:
+
+### Version Pinning
+
+Maintain `APP/.meteor/versions` to avoid re-solving on every run. The previous solution is checked without invoking the logic solver.
+
+### Package Database Optimization
+
+Time spent reading from the packages database (SQLite) can be improved by:
+- Batching queries
+- Reading less data
+- Using SQLite more efficiently
+
+## CSS Processing Optimization
+
+CSS minification and processing can take 500ms to several seconds:
+
+### Strategies:
+- Use Rspack CSS loaders for faster HMR
+- Insert caches around CSS parsing
+- Only recalculate CSS when it changes
+- Use faster CSS libraries
+
+### CSS with Rspack
+
+Migrate styles to Rspack for fastest HMR:
+
+```javascript
+// Import CSS in your app code
+import './styles/main.css';
+```
+
+This triggers Rspack HMR instead of slower Meteor HMR.
+
+## File System Optimizations
+
+### Hardware Considerations
+
+- **SSDs vs Spinning Disks** - SSDs are significantly faster
+- **OS Differences** - Windows file operations are slower than Mac/Linux
+
+### Symbolic Links and File Operations
+
+On OS X and Linux:
+- Usable symlinks
+- Cheap file renaming
+- Atomic file overwrites
+- Files can be deleted while open
+
+Windows doesn't have these properties; renaming is a copy operation.
+
+## Source Map Optimization
+
+The tool spends noticeable time building source maps. Consider:
+- Using the `source-map` library more efficiently
+- Following patterns from other tools like Webpack
+
+## Linker Cache Management
+
+The linker cache at `APP/.meteor/local/bundler-cache/linker` can have large files that take time to write. Monitor calls to `files.writeFileAtomically` in production builds.
+
+## Import Aliases
+
+Optimize imports with aliases for cleaner code:
+
+```json
+// .swcrc
+{
+  "jsc": {
+    "baseUrl": "./",
+    "paths": {
+      "@ui/*": ["ui/*"],
+      "@api/*": ["api/*"]
+    }
+  }
+}
+```
+
+Or with Rspack:
+
+```javascript
+// rspack.config.js
+export default defineConfig(Meteor => {
+  return {
+    resolve: {
+      alias: {
+        '@ui': '/imports/ui',
+        '@api': '/imports/api',
+      },
+    },
+  };
+});
+```
+
+## Best Practices
+
+1. **Enable modern build stack** - Set `"modern": true` in package.json
+2. **Use Rspack for app code** - Add `rspack` package for modern bundling
+3. **Externalize SWC helpers** - Install `@swc/helpers` to reduce bundle size
+4. **Optimize CSS processing** - Move to Rspack loaders for faster HMR
+5. **Skip legacy builds in dev** - Enable `webArchOnly` for faster iterations
+6. **Use .meteorignore** - Exclude unnecessary files from the build
+7. **Monitor bundle size** - Use `bundle-visualizer` to track bloat
+8. **Profile builds** - Use `meteor profile` to compare performance
+
+## Performance Measurement
+
+Compare performance before and after optimizations:
+
+```bash
+meteor profile
+```
+
+This provides detailed timing information for build operations.
+
+## Related Topics
+
+- [Bundle Size Optimization](/performance/bundle-size)
+- [Caching Strategies](/performance/caching)
+- [Performance Profiling](/performance/profiling)

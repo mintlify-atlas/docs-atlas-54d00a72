@@ -1,0 +1,373 @@
+---
+title: React Integration
+description: Build reactive user interfaces with React and Meteor
+---
+
+React is a JavaScript library for building reactive user interfaces. Meteor provides seamless integration with React through the `react-meteor-data` package, allowing you to build modern, reactive applications.
+
+## Installation
+
+Install React in your Meteor application:
+
+```bash
+meteor npm install --save react react-dom
+```
+
+For reactive data integration, add the `react-meteor-data` package:
+
+```bash
+meteor add react-meteor-data
+```
+
+## Quick Start
+
+Create a new React app with Meteor:
+
+```bash
+meteor create my-app --react
+```
+
+This creates a basic structure with React configured and ready to use.
+
+## Basic Setup
+
+### Client Entry Point
+
+Render your React application in `/client/main.jsx`:
+
+```jsx
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { Meteor } from 'meteor/meteor';
+import { App } from '/imports/ui/App';
+
+Meteor.startup(() => {
+  const container = document.getElementById('react-target');
+  const root = createRoot(container);
+  root.render(<App />);
+});
+```
+
+### Root Component
+
+Create your root component in `/imports/ui/App.jsx`:
+
+```jsx
+import React from 'react';
+import { Hello } from './Hello.jsx';
+import { Info } from './Info.jsx';
+
+export const App = () => (
+  <div>
+    <h1>Welcome to Meteor!</h1>
+    <Hello />
+    <Info />
+  </div>
+);
+```
+
+## Reactive Data with useTracker
+
+The `useTracker` hook integrates React components with Meteor's reactive data system.
+
+### Basic Usage
+
+```jsx
+import { useTracker } from 'meteor/react-meteor-data';
+import { Meteor } from 'meteor/meteor';
+
+function UserProfile() {
+  const currentUser = useTracker(() => Meteor.user(), []);
+  
+  return <h1>Hello {currentUser?.username}</h1>;
+}
+```
+
+### With Subscriptions
+
+```jsx
+import { useTracker } from 'meteor/react-meteor-data';
+import { TasksCollection } from '../api/tasks';
+
+function TaskList({ listId }) {
+  const { tasks, isLoading } = useTracker(() => {
+    const handle = Meteor.subscribe('tasks', listId);
+    
+    return {
+      isLoading: !handle.ready(),
+      tasks: TasksCollection.find({ listId }).fetch()
+    };
+  }, [listId]);
+  
+  if (isLoading) {
+    return <div>Loading...</div>;
+  }
+  
+  return (
+    <ul>
+      {tasks.map(task => (
+        <li key={task._id}>{task.title}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+## Modern Hooks API
+
+### useSubscribe
+
+Convenient subscription management:
+
+```jsx
+import { useFind, useSubscribe } from 'meteor/react-meteor-data';
+import { LinksCollection } from '../api/links';
+
+export const Info = () => {
+  const isLoading = useSubscribe('links');
+  const links = useFind(() => LinksCollection.find());
+
+  if (isLoading()) {
+    return <div>Loading...</div>;
+  }
+
+  return (
+    <div>
+      <h2>Learn Meteor!</h2>
+      <ul>
+        {links.map(link => (
+          <li key={link._id}>
+            <a href={link.url} target="_blank">{link.title}</a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+};
+```
+
+### useFind
+
+Optimized list rendering with controlled document references:
+
+```jsx
+import { useFind, useSubscribe } from 'meteor/react-meteor-data';
+import { memo } from 'react';
+import { PostsCollection } from '../api/posts';
+
+const PostItem = memo(({ post }) => (
+  <li>{post.title}</li>
+));
+
+function PostsList({ groupId }) {
+  useSubscribe('posts', groupId);
+  const posts = useFind(() => PostsCollection.find({ groupId }), [groupId]);
+  
+  return (
+    <ul>
+      {posts.map(post => (
+        <PostItem key={post._id} post={post} />
+      ))}
+    </ul>
+  );
+}
+```
+
+<Note>
+  `useFind` requires a cursor, not `.fetch()`. It uses `Cursor.observe` to efficiently update only changed documents.
+</Note>
+
+## withTracker HOC
+
+For class components or legacy code:
+
+```jsx
+import { withTracker } from 'meteor/react-meteor-data';
+import { TasksCollection } from '../api/tasks';
+
+function TaskList({ currentUser, isLoading, tasks }) {
+  return (
+    <div>
+      <h1>Hello {currentUser?.username}</h1>
+      {isLoading ? (
+        <div>Loading...</div>
+      ) : (
+        <ul>
+          {tasks.map(task => (
+            <li key={task._id}>{task.title}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+export default withTracker(({ listId }) => {
+  const handle = Meteor.subscribe('tasks', listId);
+  
+  return {
+    currentUser: Meteor.user(),
+    isLoading: !handle.ready(),
+    tasks: TasksCollection.find({ listId }).fetch()
+  };
+})(TaskList);
+```
+
+## Suspense Support (Meteor 3.0+)
+
+Use suspendable hooks with React Suspense:
+
+```jsx
+import { useTracker, useSubscribe } from 'meteor/react-meteor-data/suspense';
+import { TasksCollection } from '../api/tasks';
+
+function Tasks() {
+  // Component will suspend until subscription is ready
+  useSubscribe('tasks');
+  
+  const { username } = useTracker('user', () => Meteor.user());
+  const tasks = useTracker(
+    'tasksByUser',
+    () => TasksCollection.find(
+      { username },
+      { sort: { createdAt: -1 } }
+    ).fetchAsync()
+  );
+  
+  return (
+    <ul>
+      {tasks.map(task => (
+        <li key={task._id}>{task.title}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+<Note>
+  Suspendable hooks require a unique key as the first argument to identify computations.
+</Note>
+
+## Routing with React Router
+
+Meteor works seamlessly with React Router:
+
+```bash
+meteor npm install react-router-dom
+```
+
+```jsx
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { Home } from './pages/Home';
+import { TaskList } from './pages/TaskList';
+
+export const App = () => (
+  <BrowserRouter>
+    <Routes>
+      <Route path="/" element={<Home />} />
+      <Route path="/tasks/:listId" element={<TaskList />} />
+    </Routes>
+  </BrowserRouter>
+);
+```
+
+## Integration Patterns
+
+<Tabs>
+  <Tab title="React in Blaze">
+    Use React components inside Blaze templates with `react-template-helper`:
+
+    ```bash
+    meteor add react-template-helper
+    ```
+
+    In your Blaze template:
+
+    ```html
+    <template name="userDisplay">
+      <div>Hello, {{username}}</div>
+      <div>{{> React component=UserAvatar userId=_id}}</div>
+    </template>
+    ```
+
+    Define the component helper:
+
+    ```js
+    import { Template } from 'meteor/templating';
+    import UserAvatar from './UserAvatar.js';
+
+    Template.userDisplay.helpers({
+      UserAvatar() {
+        return UserAvatar;
+      }
+    });
+    ```
+  </Tab>
+  
+  <Tab title="Blaze in React">
+    Use Blaze templates in React components with `gadicc:blaze-react-component`:
+
+    ```bash
+    meteor add gadicc:blaze-react-component
+    ```
+
+    ```jsx
+    import React from 'react';
+    import Blaze from 'meteor/gadicc:blaze-react-component';
+
+    const App = () => (
+      <div>
+        <Blaze template="itemsList" items={items} />
+      </div>
+    );
+    ```
+  </Tab>
+</Tabs>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use hooks over HOCs">
+    The `useTracker` hook is preferred over `withTracker` for function components. Hooks provide better composition and are easier to test.
+  </Accordion>
+  
+  <Accordion title="Optimize with dependency arrays">
+    Provide dependency arrays to `useTracker` to retain computations and prevent unnecessary re-runs:
+    
+    ```jsx
+    const user = useTracker(() => Meteor.user(), []);
+    const tasks = useTracker(() => Tasks.find({ listId }).fetch(), [listId]);
+    ```
+  </Accordion>
+  
+  <Accordion title="Use useFind for large lists">
+    For rendering large lists from collections, `useFind` provides significant performance benefits by controlling object references.
+  </Accordion>
+  
+  <Accordion title="Memoize list items">
+    Wrap list items with `React.memo()` to prevent unnecessary re-renders:
+    
+    ```jsx
+    const ListItem = memo(({ task }) => (
+      <li>{task.title}</li>
+    ));
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="React Tutorial" icon="graduation-cap" href="https://react-tutorial.meteor.com">
+    Step-by-step tutorial for building React apps with Meteor
+  </Card>
+  <Card title="React Packages" icon="github" href="https://github.com/meteor/react-packages">
+    Source code and documentation for react-meteor-data
+  </Card>
+  <Card title="React Documentation" icon="react" href="https://react.dev">
+    Official React documentation and guides
+  </Card>
+  <Card title="React Router" icon="route" href="https://reactrouter.com">
+    Client-side routing for React applications
+  </Card>
+</CardGroup>

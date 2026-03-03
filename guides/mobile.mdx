@@ -1,0 +1,442 @@
+---
+title: Mobile Development with Cordova
+description: Building iOS and Android apps with Meteor's Cordova integration
+---
+
+## Overview
+
+Meteor integrates with [Apache Cordova](https://cordova.apache.org/) to build native mobile apps for iOS and Android from your web application codebase. Run your Meteor app on mobile devices with full access to native device features.
+
+## What is Cordova?
+
+Cordova allows you to:
+- **Package web apps** as native mobile applications
+- **Access device features** like camera, GPS, and local storage
+- **Deploy to app stores** (Apple App Store, Google Play Store)
+- **Update apps remotely** via hot code push
+
+<Info>
+A Cordova app is a web app running in a native WebView container with access to native device APIs through plugins.
+</Info>
+
+## Key Benefits
+
+### Single Codebase
+Write once, deploy to web, iOS, and Android:
+
+```javascript
+// Same code runs on all platforms
+if (Meteor.isCordova) {
+  // Mobile-specific code
+  console.log('Running on mobile');
+} else {
+  // Web-specific code
+  console.log('Running on web');
+}
+```
+
+### Hot Code Push
+Update your app without going through app store review:
+
+```javascript
+// Users get updates automatically
+// No resubmission to app stores required
+// Updates happen in the background
+```
+
+### Faster Loading
+Assets are bundled with the app:
+
+```javascript
+// App loads from localhost, not remote server
+// Much faster on slow mobile connections
+// Works offline after initial install
+```
+
+## Adding Mobile Platforms
+
+### Add iOS Platform
+
+```bash
+meteor add-platform ios
+```
+
+**Requirements:**
+- macOS with Xcode installed
+- Xcode Command Line Tools
+- iOS Simulator or physical iOS device
+
+### Add Android Platform
+
+```bash
+meteor add-platform android
+```
+
+**Requirements:**
+- Java Development Kit (JDK)
+- Android SDK / Android Studio
+- Android emulator or physical Android device
+- `ANDROID_HOME` environment variable set
+
+### List and Remove Platforms
+
+```bash
+# List current platforms
+meteor list-platforms
+
+# Remove a platform
+meteor remove-platform ios
+meteor remove-platform android
+```
+
+## Running on Mobile
+
+### iOS Simulator
+
+```bash
+# Run on iOS simulator (default)
+meteor run ios
+
+# Run on specific iOS simulator
+meteor run ios --ios-simulator
+```
+
+### iOS Device
+
+```bash
+# Run on connected iOS device
+meteor run ios-device
+
+# Specify device by ID
+meteor run ios-device --device <device-id>
+```
+
+### Android Emulator
+
+```bash
+# Run on Android emulator (default)
+meteor run android
+
+# Launch emulator automatically
+meteor run android --android-emulator
+```
+
+### Android Device
+
+```bash
+# Run on connected Android device
+meteor run android-device
+
+# Enable USB debugging on your device first
+```
+
+## Cordova Plugins
+
+Plugins provide access to native device features.
+
+### Adding Plugins
+
+```bash
+# Add camera plugin
+meteor add cordova:cordova-plugin-camera@latest
+
+# Add geolocation
+meteor add cordova:cordova-plugin-geolocation@latest
+
+# Add local notifications
+meteor add cordova:cordova-plugin-local-notification@latest
+
+# Add file access
+meteor add cordova:cordova-plugin-file@latest
+```
+
+### Using Plugins in Code
+
+```javascript
+// Check if Cordova is available
+if (Meteor.isCordova) {
+  // Access camera
+  navigator.camera.getPicture(
+    (imageData) => {
+      console.log('Image:', imageData);
+    },
+    (error) => {
+      console.error('Camera error:', error);
+    },
+    {
+      quality: 50,
+      destinationType: Camera.DestinationType.DATA_URL
+    }
+  );
+}
+```
+
+### Common Plugins
+
+```bash
+# Camera
+meteor add cordova:cordova-plugin-camera@latest
+
+# Geolocation
+meteor add cordova:cordova-plugin-geolocation@latest
+
+# Device information
+meteor add cordova:cordova-plugin-device@latest
+
+# Network information
+meteor add cordova:cordova-plugin-network-information@latest
+
+# Vibration
+meteor add cordova:cordova-plugin-vibration@latest
+
+# Status bar customization
+meteor add cordova:cordova-plugin-statusbar@latest
+
+# Keyboard management
+meteor add cordova:cordova-plugin-keyboard@latest
+
+# In-app browser
+meteor add cordova:cordova-plugin-inappbrowser@latest
+```
+
+## Mobile Configuration
+
+Create `mobile-config.js` in your app root:
+
+```javascript
+// Basic app information
+App.info({
+  id: 'com.example.myapp',
+  name: 'MyApp',
+  description: 'My awesome Meteor app',
+  author: 'Your Name',
+  email: 'you@example.com',
+  website: 'https://myapp.com',
+  version: '1.0.0'
+});
+
+// Set icons for different resolutions
+App.icons({
+  // iOS
+  'iphone_2x': 'resources/icons/icon-60@2x.png',
+  'iphone_3x': 'resources/icons/icon-60@3x.png',
+  'ipad': 'resources/icons/icon-76.png',
+  'ipad_2x': 'resources/icons/icon-76@2x.png',
+  'ipad_pro': 'resources/icons/icon-83.5@2x.png',
+  'ios_settings': 'resources/icons/icon-29.png',
+  'ios_settings_2x': 'resources/icons/icon-29@2x.png',
+  'ios_settings_3x': 'resources/icons/icon-29@3x.png',
+  
+  // Android
+  'android_mdpi': 'resources/icons/icon-48.png',
+  'android_hdpi': 'resources/icons/icon-72.png',
+  'android_xhdpi': 'resources/icons/icon-96.png',
+  'android_xxhdpi': 'resources/icons/icon-144.png',
+  'android_xxxhdpi': 'resources/icons/icon-192.png'
+});
+
+// Set launch screens (splash screens)
+App.launchScreens({
+  // iOS
+  'iphone_2x': 'resources/splash/splash-320x480@2x.png',
+  'iphone5': 'resources/splash/splash-320x568@2x.png',
+  'iphone6': 'resources/splash/splash-375x667@2x.png',
+  'iphone6p_portrait': 'resources/splash/splash-414x736@3x.png',
+  'ipad_portrait': 'resources/splash/splash-768x1024.png',
+  'ipad_portrait_2x': 'resources/splash/splash-768x1024@2x.png',
+  
+  // Android
+  'android_mdpi_portrait': 'resources/splash/splash-320x470.png',
+  'android_hdpi_portrait': 'resources/splash/splash-480x640.png',
+  'android_xhdpi_portrait': 'resources/splash/splash-720x960.png',
+  'android_xxhdpi_portrait': 'resources/splash/splash-1080x1440.png'
+});
+
+// Configure preferences
+App.setPreference('BackgroundColor', '0xffffffff');
+App.setPreference('HideKeyboardFormAccessoryBar', true);
+App.setPreference('Orientation', 'default');
+App.setPreference('StatusBarOverlaysWebView', false);
+App.setPreference('StatusBarBackgroundColor', '#000000');
+
+// Configure plugin
+App.configurePlugin('cordova-plugin-camera', {
+  CAMERA_USAGE_DESCRIPTION: 'We need camera access to take photos'
+});
+```
+
+## Platform Detection
+
+```javascript
+// Check if running on Cordova
+if (Meteor.isCordova) {
+  console.log('Running on mobile');
+}
+
+// Check specific platform
+if (Meteor.isCordova) {
+  if (device.platform === 'iOS') {
+    console.log('Running on iOS');
+  } else if (device.platform === 'Android') {
+    console.log('Running on Android');
+  }
+}
+
+// Platform-specific code
+import { Meteor } from 'meteor/meteor';
+
+if (Meteor.isCordova) {
+  // Only load on mobile
+  import('./mobile-only-feature');
+}
+```
+
+## Hot Code Push
+
+Meteor automatically updates mobile apps with new code:
+
+```javascript
+// Server: Deploy new version
+// Mobile apps will detect and download update
+// Update happens in background
+// App reloads with new code automatically
+
+// Configure update behavior
+if (Meteor.isCordova) {
+  Reload._onMigrate(() => {
+    console.log('New version available');
+    // Return true to apply update
+    return [true];
+  });
+}
+```
+
+### Controlling Updates
+
+```javascript
+// Disable hot code push
+App.setPreference('AutoHideSplashScreen', false);
+
+// Custom update UI
+if (Meteor.isCordova) {
+  Reload._onMigrate((retry) => {
+    const shouldUpdate = confirm('Update available. Install now?');
+    if (shouldUpdate) {
+      return [true];
+    } else {
+      return [false];
+    }
+  });
+}
+```
+
+## Building for Production
+
+### iOS Production Build
+
+```bash
+# Build for iOS
+meteor build ../output --server=https://myapp.com
+
+# Open in Xcode
+open ../output/ios/project.xcworkspace
+
+# In Xcode:
+# 1. Select your provisioning profile
+# 2. Archive the app
+# 3. Upload to App Store Connect
+```
+
+### Android Production Build
+
+```bash
+# Build for Android
+meteor build ../output --server=https://myapp.com
+
+# Sign the APK
+cd ../output/android
+jarsigner -verbose -sigalg SHA1withRSA \
+  -digestalg SHA1 -keystore my-release-key.keystore \
+  release-unsigned.apk alias_name
+
+# Align the APK
+zipalign -v 4 release-unsigned.apk MyApp.apk
+
+# Upload to Google Play Console
+```
+
+## Local Files and Assets
+
+### Accessing Local Files
+
+```javascript
+if (Meteor.isCordova) {
+  // Get file system root
+  window.requestFileSystem(
+    LocalFileSystem.PERSISTENT,
+    0,
+    (fileSystem) => {
+      console.log('File system:', fileSystem.root.nativeURL);
+    },
+    (error) => {
+      console.error('Error:', error);
+    }
+  );
+}
+```
+
+### Loading Local Assets
+
+```javascript
+// Public folder assets are bundled
+const imagePath = Meteor.isCordova 
+  ? '/application/public/images/logo.png'
+  : '/images/logo.png';
+
+// Use in HTML
+<img src={imagePath} alt="Logo" />
+```
+
+## Troubleshooting
+
+### Common Issues
+
+**Build Failures:**
+```bash
+# Clean build
+meteor reset
+meteor run ios
+
+# Remove and re-add platform
+meteor remove-platform ios
+meteor add-platform ios
+```
+
+**Port Conflicts:**
+```bash
+# Specify custom port
+meteor run ios --cordova-server-port 12345
+```
+
+**Plugin Issues:**
+```bash
+# Remove and reinstall plugin
+meteor remove cordova:plugin-name
+meteor add cordova:plugin-name@version
+```
+
+## Performance Tips
+
+1. **Optimize Images**: Use appropriate resolutions for mobile
+2. **Minimize Animations**: Use CSS transforms over JavaScript
+3. **Lazy Load**: Load data and images as needed
+4. **Cache Data**: Use local storage for offline support
+5. **Test on Devices**: Simulators don't reflect real performance
+
+## Related Resources
+
+- [Cordova Documentation](https://cordova.apache.org/docs/en/latest/)
+- [Cordova Plugins](https://cordova.apache.org/plugins/)
+- [Mobile Config API](https://docs.meteor.com/api/mobile-config.html)
+- [iOS Developer](https://developer.apple.com/)
+- [Android Developer](https://developer.android.com/)

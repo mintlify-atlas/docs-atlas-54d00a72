@@ -1,0 +1,487 @@
+---
+title: DDP
+description: Meteor's latency-compensated distributed data framework
+---
+
+DDP (Distributed Data Protocol) is Meteor's protocol for real-time data synchronization between clients and servers. It provides the foundation for Meteor's live query and method call infrastructure.
+
+## Installation
+
+```bash
+meteor add ddp
+```
+
+<Info>
+The `ddp` package is typically included by default in Meteor applications. It combines `ddp-client` and `ddp-server`.
+</Info>
+
+## Overview
+
+DDP is a protocol that enables:
+
+- **Remote Procedure Calls (Methods)**: Call server functions from the client
+- **Publications and Subscriptions**: Real-time data synchronization
+- **Latency Compensation**: Optimistic UI updates with automatic rollback
+- **Automatic Reconnection**: Resilient connection handling
+- **Collection Synchronization**: Keep client and server data in sync
+
+## Package Information
+
+- **Version**: 1.4.2
+- **Summary**: Meteor's latency-compensated distributed data framework
+- **Components**:
+  - `ddp-client` - Client-side DDP implementation
+  - `ddp-server` - Server-side DDP implementation
+  - `ddp-common` - Shared utilities
+  - `ddp-rate-limiter` - Rate limiting for security
+
+## Architecture
+
+DDP operates over WebSocket connections with automatic fallback:
+
+```
+Client                          Server
+  |                               |
+  |------ WebSocket/SockJS -------|
+  |                               |
+  |--- Method Call (RPC) -------->|
+  |<---- Result/Error ------------|
+  |                               |
+  |--- Subscribe to Data -------->|
+  |<---- Initial Data ------------|
+  |<---- Live Updates ------------|
+  |                               |
+```
+
+## Exports
+
+- **`DDP`** - Client and server
+- **`DDPServer`** - Server only
+
+## Connecting to DDP Servers
+
+### Default Connection
+
+Meteor apps automatically connect to their own server:
+
+```javascript
+// The default connection
+Meteor.connection // DDP connection to the app's server
+```
+
+### Additional Connections
+
+Connect to other DDP servers:
+
+```javascript
+// Connect to another Meteor server
+const remoteConnection = DDP.connect('https://api.example.com');
+
+// Use the connection
+const RemoteCollection = new Mongo.Collection('items', {
+  connection: remoteConnection
+});
+
+// Subscribe using the connection
+remoteConnection.subscribe('publicData');
+
+// Call methods on the connection
+remoteConnection.call('remoteMethod', arg1, arg2, (error, result) => {
+  if (error) {
+    console.error('Method failed:', error);
+  } else {
+    console.log('Result:', result);
+  }
+});
+```
+
+<ParamField path="url" type="string" required>
+  The URL of the DDP server to connect to
+</ParamField>
+
+<ParamField path="options" type="object">
+  Connection options
+</ParamField>
+
+### Connection Options
+
+```javascript
+const connection = DDP.connect('wss://api.example.com', {
+  // Retry connection on failure
+  retry: true,
+  
+  // Heartbeat settings
+  heartbeatInterval: 17500,  // Send ping every 17.5 seconds
+  heartbeatTimeout: 15000,   // Timeout after 15 seconds
+  
+  // Custom headers (for server-to-server)
+  headers: {
+    'X-API-Key': 'secret'
+  },
+  
+  // SockJS options
+  _sockjsOptions: {
+    transports: ['websocket']
+  }
+});
+```
+
+## Connection Status
+
+### Reactive Status
+
+```javascript
+Tracker.autorun(() => {
+  const status = Meteor.status();
+  
+  console.log('Connected:', status.connected);
+  console.log('Status:', status.status);
+  // status: 'connected', 'connecting', 'failed', 'waiting', 'offline'
+  
+  if (status.retryCount > 0) {
+    console.log('Reconnection attempts:', status.retryCount);
+  }
+  
+  if (!status.connected) {
+    console.log('Will retry in:', status.retryTime);
+  }
+});
+```
+
+### Manual Connection Control
+
+```javascript
+// Disconnect from server
+Meteor.disconnect();
+
+// Reconnect to server
+Meteor.reconnect();
+
+// Run code on reconnection
+Meteor.onConnection((connection) => {
+  console.log('New connection established:', connection.id);
+});
+```
+
+## Methods (RPC)
+
+### Defining Methods
+
+```javascript
+// Server: Define methods
+Meteor.methods({
+  'todos.insert': async function(text) {
+    // Validate arguments
+    check(text, String);
+    
+    // Check authentication
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized');
+    }
+    
+    // Insert and return ID
+    return await Todos.insertAsync({
+      text: text,
+      userId: this.userId,
+      createdAt: new Date()
+    });
+  },
+  
+  'todos.remove': async function(todoId) {
+    check(todoId, String);
+    
+    const todo = await Todos.findOneAsync(todoId);
+    
+    if (todo.userId !== this.userId) {
+      throw new Meteor.Error('not-authorized');
+    }
+    
+    await Todos.removeAsync(todoId);
+  }
+});
+```
+
+### Calling Methods
+
+```javascript
+// Client: Call a method
+Meteor.call('todos.insert', 'Buy milk', (error, result) => {
+  if (error) {
+    alert('Error: ' + error.reason);
+  } else {
+    console.log('Created todo:', result);
+  }
+});
+
+// Using async/await
+try {
+  const todoId = await Meteor.callAsync('todos.insert', 'Buy milk');
+  console.log('Created todo:', todoId);
+} catch (error) {
+  console.error('Failed:', error);
+}
+```
+
+### Method Context
+
+Inside a method, `this` provides:
+
+```javascript
+Meteor.methods({
+  'exampleMethod': function() {
+    this.userId       // Current user ID (or null)
+    this.connection   // DDP connection
+    this.isSimulation // true if running on client
+    this.setUserId(userId)  // Change the user
+    this.unblock()    // Allow other methods to run
+  }
+});
+```
+
+## Publications and Subscriptions
+
+### Publishing Data
+
+```javascript
+// Server: Publish data
+Meteor.publish('myTodos', function() {
+  // Check authentication
+  if (!this.userId) {
+    return this.ready();
+  }
+  
+  // Return cursor
+  return Todos.find({ userId: this.userId });
+});
+
+// Publish with parameters
+Meteor.publish('todosByStatus', function(status) {
+  check(status, String);
+  
+  return Todos.find({
+    userId: this.userId,
+    status: status
+  });
+});
+
+// Publish multiple collections
+Meteor.publish('todosAndLists', function() {
+  return [
+    Todos.find({ userId: this.userId }),
+    Lists.find({ userId: this.userId })
+  ];
+});
+```
+
+### Subscribing to Data
+
+```javascript
+// Client: Subscribe to data
+const handle = Meteor.subscribe('myTodos');
+
+// Check if subscription is ready
+Tracker.autorun(() => {
+  if (handle.ready()) {
+    console.log('Data loaded:', Todos.find().count());
+  }
+});
+
+// Subscribe with parameters
+Meteor.subscribe('todosByStatus', 'active');
+
+// Stop subscription
+handle.stop();
+```
+
+### Subscription Callbacks
+
+```javascript
+Meteor.subscribe('myTodos', {
+  onReady: () => {
+    console.log('Subscription ready');
+  },
+  onError: (error) => {
+    console.error('Subscription error:', error);
+  },
+  onStop: (error) => {
+    if (error) {
+      console.error('Stopped due to error:', error);
+    } else {
+      console.log('Subscription stopped');
+    }
+  }
+});
+```
+
+## Latency Compensation
+
+DDP implements optimistic UI updates:
+
+```javascript
+// Client-side simulation runs immediately
+Meteor.call('todos.insert', 'New todo', (error, result) => {
+  // This callback runs after server responds
+  if (error) {
+    // UI is rolled back automatically
+    console.error('Server rejected:', error);
+  }
+});
+
+// UI updates instantly from simulation,
+// then corrects if server result differs
+```
+
+### Disabling Simulation
+
+```javascript
+// Skip client-side simulation
+Meteor.apply('todos.insert', ['New todo'], {
+  noRetry: true,
+  wait: true,  // Don't return until server responds
+  returnStubValue: false
+}, callback);
+```
+
+## DDP Message Format
+
+DDP uses JSON messages over WebSocket:
+
+### Method Call
+
+```json
+{
+  "msg": "method",
+  "method": "todos.insert",
+  "params": ["Buy milk"],
+  "id": "1"
+}
+```
+
+### Method Result
+
+```json
+{
+  "msg": "result",
+  "id": "1",
+  "result": "todoId123"
+}
+```
+
+### Subscribe
+
+```json
+{
+  "msg": "sub",
+  "id": "sub1",
+  "name": "myTodos",
+  "params": []
+}
+```
+
+### Data Added
+
+```json
+{
+  "msg": "added",
+  "collection": "todos",
+  "id": "todoId123",
+  "fields": {
+    "text": "Buy milk",
+    "done": false
+  }
+}
+```
+
+### Data Changed
+
+```json
+{
+  "msg": "changed",
+  "collection": "todos",
+  "id": "todoId123",
+  "fields": {
+    "done": true
+  }
+}
+```
+
+### Data Removed
+
+```json
+{
+  "msg": "removed",
+  "collection": "todos",
+  "id": "todoId123"
+}
+```
+
+## Rate Limiting
+
+Protect methods and publications from abuse:
+
+```javascript
+import { DDPRateLimiter } from 'meteor/ddp-rate-limiter';
+
+// Limit method calls
+DDPRateLimiter.addRule({
+  type: 'method',
+  name: 'todos.insert',
+  userId(userId) {
+    return true; // Apply to all users
+  }
+}, 10, 1000); // 10 calls per second
+
+// Limit subscription
+DDPRateLimiter.addRule({
+  type: 'subscription',
+  name: 'myTodos'
+}, 5, 10000); // 5 subscriptions per 10 seconds
+
+// Custom rate limit
+DDPRateLimiter.addRule({
+  type: 'method',
+  name(name) {
+    return name.startsWith('admin.');
+  },
+  connectionId() { return true; }
+}, 2, 5000); // 2 calls per 5 seconds per connection
+```
+
+## Connection Hooks
+
+```javascript
+// Server: Handle new connections
+Meteor.onConnection((connection) => {
+  console.log('New connection:', connection.id);
+  console.log('Client address:', connection.clientAddress);
+  console.log('HTTP headers:', connection.httpHeaders);
+  
+  connection.onClose(() => {
+    console.log('Connection closed:', connection.id);
+  });
+});
+```
+
+## Related Packages
+
+<CardGroup cols={2}>
+  <Card title="ddp-rate-limiter" icon="gauge-high" href="#">
+    Rate limiting for DDP methods and subscriptions
+  </Card>
+  <Card title="mongo" icon="database" href="/packages/mongo">
+    MongoDB integration with DDP
+  </Card>
+  <Card title="accounts-base" icon="user" href="/packages/accounts-base">
+    User accounts over DDP
+  </Card>
+  <Card title="webapp" icon="server" href="/packages/webapp">
+    HTTP server for DDP
+  </Card>
+</CardGroup>
+
+## Source Code
+
+- [packages/ddp](https://github.com/meteor/meteor/tree/devel/packages/ddp)
+- [packages/ddp-client](https://github.com/meteor/meteor/tree/devel/packages/ddp-client)
+- [packages/ddp-server](https://github.com/meteor/meteor/tree/devel/packages/ddp-server)
+- [DDP Specification](https://github.com/meteor/meteor/blob/devel/packages/ddp/DDP.md)

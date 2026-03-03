@@ -1,0 +1,448 @@
+---
+title: Compiler Plugins
+description: Technical documentation of Meteor's compiler plugin system
+---
+
+# Compiler Plugins
+
+Compiler plugins allow packages to extend Meteor's build system by registering handlers for specific file types. Unlike legacy source handlers, compiler plugins run in the context of an entire app.
+
+## Plugin Architecture
+
+From compiler-plugin.js:
+
+> Unlike legacy source handlers (Plugin.registerSourceHandler), compilers run in the context of an entire app. They don't run when you run `meteor publish`; whenever they run, they have access to all the files of their type across all packages as well as the app.
+
+## CompilerPluginProcessor
+
+The main entry point for processing files with plugins:
+
+```javascript
+export class CompilerPluginProcessor {
+  constructor({
+    unibuilds,           // Ordered list of packages
+    arch,                // Target architecture
+    sourceRoot,          // App source root
+    buildMode,           // production/development/test
+    isopackCache,        // Package cache
+    linkerCacheDir,      // Cache directory for linker
+    scannerCacheDir,     // Cache directory for import scanner
+    minifyCssResource,   // CSS minification function
+  }) {
+    Object.assign(this, {
+      unibuilds, arch, sourceRoot, buildMode,
+      isopackCache, linkerCacheDir, scannerCacheDir,
+      minifyCssResource,
+    });
+    
+    if (linkerCacheDir) {
+      files.mkdir_p(linkerCacheDir);
+    }
+    if (scannerCacheDir) {
+      files.mkdir_p(scannerCacheDir);
+    }
+  }
+}
+```
+
+## Plugin Execution
+
+```javascript
+async runCompilerPlugins() {
+  buildmessage.assertInJob();
+  
+  // Create source batches for each unibuild
+  const sourceBatches = [];
+  for (const unibuild of this.unibuilds) {
+    const { pkg: { name }, arch } = unibuild;
+    const sourceRoot = name
+      && this.isopackCache.getSourceRoot(name, arch)
+      || this.sourceRoot;
+    
+    const batch = new PackageSourceBatch(unibuild, this, {
+      sourceRoot,
+      linkerCacheDir: this.linkerCacheDir,
+      scannerCacheDir: this.scannerCacheDir,
+    });
+    
+    await batch.init();
+    sourceBatches.push(batch);
+  }
+  
+  // Group files by source processor
+  const sourceProcessorsWithSlots = {};
+  _.each(sourceBatches, function (sourceBatch) {
+    _.each(sourceBatch.resourceSlots, function (resourceSlot) {
+      var sourceProcessor = resourceSlot.sourceProcessor;
+      if (!sourceProcessor) return;
+      
+      if (!_.has(sourceProcessorsWithSlots, sourceProcessor.id)) {
+        sourceProcessorsWithSlots[sourceProcessor.id] = {
+          sourceProcessor: sourceProcessor,
+          resourceSlots: []
+        };
+      }
+      sourceProcessorsWithSlots[sourceProcessor.id].resourceSlots.push(
+        resourceSlot);
+    });
+  });
+  
+  // Run each processor
+  for (const [id, data] of Object.entries(sourceProcessorsWithSlots)) {
+    var sourceProcessor = data.sourceProcessor;
+    var resourceSlots = data.resourceSlots;
+    
+    var jobTitle = [
+      "processing files with ",
+      sourceProcessor.isopack.name,
+      " (for target ", this.arch, ")"
+    ].join('');
+    
+    await Profile.time("plugin "+sourceProcessor.isopack.name, async () => {
+      await buildmessage.enterJob({ title: jobTitle }, async function () {
+        var inputFiles = resourceSlots.map(
+          resourceSlot => new InputFile(resourceSlot)
+        );
+        
+        const markedMethod = buildmessage.markBoundary(
+          sourceProcessor.userPlugin.processFilesForTarget,
+          sourceProcessor.userPlugin
+        );
+        
+        await markedMethod(inputFiles);
+      });
+    });
+  }
+  
+  return sourceBatches;
+}
+```
+
+## InputFile API
+
+The `InputFile` class is the documented API presented to compiler plugins:
+
+```javascript
+class InputFile extends buildPluginModule.InputFile {
+  constructor(resourceSlot) {
+    super();
+    this._resourceSlot = resourceSlot;
+    
+    // Cache maps
+    this._statCache = Object.create(null);
+    this._controlFileCache = Object.create(null);
+    this._resolveCache = Object.create(null);
+    
+    // Feature flags
+    this.supportsLazyCompilation = true;
+    this.supportsTopLevelAwait = true;
+  }
+  
+  getContentsAsBuffer() {
+    return this._resourceSlot.inputResource.data;
+  }
+  
+  getPackageName() {
+    return this._resourceSlot.packageSourceBatch.unibuild.pkg.name;
+  }
+  
+  isPackageFile() {
+    return !!this.getPackageName();
+  }
+  
+  isApplicationFile() {
+    return !this.getPackageName();
+  }
+  
+  getPathInPackage() {
+    return this._resourceSlot.inputResource.path;
+  }
+  
+  getSourceHash() {
+    return this._resourceSlot.inputResource.hash;
+  }
+  
+  getExtension() {
+    return this._resourceSlot.inputResource.extension;
+  }
+  
+  getDeclaredExports() {
+    return this._resourceSlot.packageSourceBatch.unibuild.declaredExports;
+  }
+  
+  getDisplayPath() {
+    return this._resourceSlot.packageSourceBatch.unibuild.pkg._getServePath(
+      this.getPathInPackage()
+    );
+  }
+}
+```
+
+## File Resolution
+
+```javascript
+findControlFile(basename) {
+  let absPath = this._controlFileCache[basename];
+  if (typeof absPath === "string") {
+    return absPath;
+  }
+  
+  const sourceRoot = this.getSourceRoot(true);
+  if (!_.isString(sourceRoot)) {
+    return this._controlFileCache[basename] = null;
+  }
+  
+  let dir = files.pathDirname(
+    files.pathJoin(sourceRoot, this.getPathInPackage()));
+  
+  while (true) {
+    absPath = files.pathJoin(dir, basename);
+    
+    const stat = this._stat(absPath);
+    if (stat && stat.isFile()) {
+      return this._controlFileCache[basename] = absPath;
+    }
+    
+    // Don't escape node_modules
+    if (files.pathBasename(dir) === "node_modules") {
+      return this._controlFileCache[basename] = null;
+    }
+    
+    if (dir === sourceRoot) break;
+    let parentDir = files.pathDirname(dir);
+    if (parentDir === dir) break;
+    dir = parentDir;
+  }
+  
+  return this._controlFileCache[basename] = null;
+}
+
+resolve(id, parentPath) {
+  parentPath = parentPath || files.pathJoin(
+    this.getSourceRoot(),
+    this.getPathInPackage()
+  );
+  
+  const resId = this._resolveCacheLookup(id, parentPath);
+  if (resId) {
+    return resId;
+  }
+  
+  const batch = this._resourceSlot.packageSourceBatch;
+  const resolver = batch.getResolver({
+    // Use server architecture for resolving
+    targetArch: archinfo.host(),
+  });
+  const resolved = resolver.resolve(id, parentPath);
+  
+  if (resolved === "missing") {
+    const error = new Error("Cannot find module '" + id + "'");
+    error.code = "MODULE_NOT_FOUND";
+    throw error;
+  }
+  
+  return this._resolveCacheStore(id, parentPath, resolved.id);
+}
+```
+
+## Adding Output
+
+### JavaScript
+
+```javascript
+addJavaScript(options, lazyFinalizer) {
+  // options.path - target path
+  // options.data - compiled code
+  // options.sourceMap - source map
+  // lazyFinalizer - function to call for expensive computation
+  this._resourceSlot.addJavaScript(options, lazyFinalizer);
+}
+```
+
+### CSS
+
+```javascript
+addStylesheet(options, lazyFinalizer) {
+  // options.path - target path
+  // options.data - CSS content
+  // options.sourceMap - source map
+  this._resourceSlot.addStylesheet(options, lazyFinalizer);
+}
+```
+
+### Assets
+
+```javascript
+addAsset(options) {
+  // options.path - target path
+  // options.data - asset content
+  this._resourceSlot.addAsset(options);
+}
+```
+
+## Lazy Compilation
+
+Plugins can defer expensive compilation:
+
+```javascript
+// Compiler plugin example
+processFilesForTarget(inputFiles) {
+  inputFiles.forEach(file => {
+    file.addJavaScript(
+      {
+        path: file.getPathInPackage(),
+        // Don't include data yet
+      },
+      // Lazy finalizer - only called if file is actually used
+      () => {
+        const compiled = expensiveCompilation(file.getContentsAsBuffer());
+        return {
+          data: compiled.code,
+          sourceMap: compiled.map
+        };
+      }
+    );
+  });
+}
+```
+
+## Linker Cache
+
+The linker caches compilation results:
+
+```javascript
+const CACHE_SIZE = process.env.METEOR_LINKER_CACHE_SIZE || 1024*1024*100;
+const LINKER_CACHE_SALT = 26; // Increment to force relinking
+
+const LINKER_CACHE = new LRUCache({
+  max: CACHE_SIZE,
+  // Measured in bytes
+  length(files) {
+    return files.reduce((soFar, current) => {
+      return soFar + current.data.length + sourceMapLength(current.sourceMap);
+    }, 0);
+  }
+});
+```
+
+## Watch and Rebuild
+
+```javascript
+readAndWatchFileWithHash(path) {
+  const sourceBatch = this._resourceSlot.packageSourceBatch;
+  return readAndWatchFileWithHash(
+    sourceBatch.unibuild.watchSet,
+    files.convertToPosixPath(path),
+  );
+}
+
+readAndWatchFile(path) {
+  return this.readAndWatchFileWithHash(path).contents;
+}
+```
+
+## HMR Support
+
+```javascript
+hmrAvailable() {
+  const fileOptions = this.getFileOptions() || {};
+  return this._resourceSlot.hmrAvailable() && !fileOptions.bare;
+}
+```
+
+## Server-Lib Packages
+
+Built-in packages available in build plugins:
+
+```javascript
+const serverLibPackages = {
+  fibers: true,
+  // ... populated from dev_bundle/server-lib/node_modules
+};
+
+function populateServerLibPackages() {
+  const devBundlePath = files.getDevBundle();
+  const nodeModulesPath = files.pathJoin(
+    devBundlePath, "server-lib", "node_modules"
+  );
+  
+  files.readdir(nodeModulesPath).forEach(packageName => {
+    const packagePath = files.pathJoin(nodeModulesPath, packageName);
+    const packageStat = files.statOrNull(packagePath);
+    if (packageStat && packageStat.isDirectory()) {
+      serverLibPackages[packageName] = true;
+    }
+  });
+}
+```
+
+## Plugin Types
+
+Three types of plugins can be registered:
+
+### Compiler Plugins
+
+```javascript
+Plugin.registerCompiler({
+  extensions: ['jsx', 'tsx'],
+  archMatching: 'web',
+  isTemplate: false
+}, () => new MyCompiler());
+```
+
+### Linter Plugins
+
+```javascript
+Plugin.registerLinter({
+  extensions: ['js', 'jsx'],
+  archMatching: 'web'
+}, () => new MyLinter());
+```
+
+### Minifier Plugins
+
+```javascript
+Plugin.registerMinifier({
+  extensions: ['js', 'css']
+}, () => new MyMinifier());
+```
+
+## Source Processor Sets
+
+```javascript
+// From isopack.js plugin initialization
+self.sourceProcessors.compiler = new buildPluginModule.SourceProcessorSet(
+  self.displayName(), 
+  { hardcodeJs: true, singlePackage: true }
+);
+
+self.sourceProcessors.linter = new buildPluginModule.SourceProcessorSet(
+  self.displayName(), 
+  { singlePackage: true, allowConflicts: true }
+);
+
+self.sourceProcessors.minifier = new buildPluginModule.SourceProcessorSet(
+  self.displayName(), 
+  { singlePackage: true }
+);
+```
+
+## Plugin Loading
+
+```javascript
+// Plugins are loaded with specific context
+await plugin.load({
+  Plugin,           // Plugin API object
+  Profile,          // Profiling utilities
+  __meteor_bootstrap__: {
+    isFibersDisabled: true,
+    startupHooks: null
+  }
+});
+```
+
+## Related Topics
+
+- [Isobuild](./isobuild) - The build system
+- [Bundler](./bundler) - Bundle generation
+- [Build Performance](./build-performance) - Performance optimization

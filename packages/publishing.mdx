@@ -1,0 +1,422 @@
+---
+title: Publishing Packages
+description: How to publish and maintain packages on Atmosphere
+---
+
+Once you've created a package, you can publish it to Atmosphere to share it with the Meteor community.
+
+## Prerequisites
+
+Before publishing, ensure:
+
+1. You have a [Meteor Developer Account](https://www.meteor.com/developers/create-account)
+2. Your package name follows the format `username:package-name`
+3. You've tested your package thoroughly
+4. Your package has a version number in `package.js`
+5. You have a good README.md
+
+## Publishing for the First Time
+
+<Steps>
+  <Step title="Navigate to your package directory">
+    ```bash
+    cd path/to/my-package
+    ```
+  </Step>
+
+  <Step title="Login to Meteor">
+    ```bash
+    meteor login
+    ```
+    
+    Enter your Meteor Developer Account credentials.
+  </Step>
+
+  <Step title="Publish with --create flag">
+    ```bash
+    meteor publish --create
+    ```
+
+    <Warning>
+      The first publish requires the `--create` flag. Subsequent publishes don't need it.
+    </Warning>
+  </Step>
+
+  <Step title="Verify publication">
+    Your package is now available at:
+    ```
+    https://atmospherejs.com/username/package-name
+    ```
+
+    Users can add it with:
+    ```bash
+    meteor add username:package-name
+    ```
+  </Step>
+</Steps>
+
+## Publishing Updates
+
+<Steps>
+  <Step title="Update the version number">
+    In `package.js`, increment the version following semantic versioning:
+
+    ```javascript
+    Package.describe({
+      version: '1.0.1', // Was 1.0.0
+      // ...
+    });
+    ```
+
+    <Info>
+      **Semantic Versioning:**
+      - **Patch** (1.0.1): Bug fixes only
+      - **Minor** (1.1.0): New features, backward compatible  
+      - **Major** (2.0.0): Breaking changes
+    </Info>
+  </Step>
+
+  <Step title="Publish the update">
+    ```bash
+    meteor publish
+    ```
+
+    No `--create` flag needed for updates.
+  </Step>
+</Steps>
+
+## Updating Metadata Only
+
+If you only need to update the package description or README without code changes:
+
+```bash
+meteor publish --update
+```
+
+This updates:
+- Package.describe() content
+- README.md
+- Other metadata
+
+Without requiring a version bump.
+
+## Publishing for Different Architectures
+
+Some packages contain binary code specific to an architecture (e.g., packages with npm dependencies that have native modules).
+
+### Understanding Architecture Builds
+
+When you run `meteor publish`, it uploads a build for **your current architecture only**.
+
+Supported architectures:
+- **os.osx.x86_64**: macOS (Intel)
+- **os.linux.x86_64**: 64-bit Linux
+- **os.linux.x86_32**: 32-bit Linux
+- **os.windows.x86_64**: 64-bit Windows
+
+<Note>
+Galaxy servers run 64-bit Linux, so if your package has binary dependencies, you must publish a Linux build.
+</Note>
+
+### Publishing Additional Architectures
+
+<Steps>
+  <Step title="Publish initial version">
+    On your development machine (e.g., macOS):
+    ```bash
+    meteor publish --create
+    ```
+  </Step>
+
+  <Step title="Log into a different architecture machine">
+    Get access to a Linux machine (or Windows, etc.).
+  </Step>
+
+  <Step title="Publish for that architecture">
+    ```bash
+    meteor publish-for-arch username:package-name@1.0.0
+    ```
+
+    Replace with your package name and exact version.
+  </Step>
+
+  <Step title="Verify all architectures">
+    The package now works on multiple architectures.
+  </Step>
+</Steps>
+
+### Example: Publishing for Linux
+
+```bash
+# On macOS - initial publish
+meteor publish --create
+
+# On Linux machine - add Linux build
+meteor login
+meteor publish-for-arch username:cool-binary-blob@1.0.0
+```
+
+Meteor detects the architecture and uploads the appropriate build.
+
+## Package Versioning Guidelines
+
+From `CONTRIBUTING.md`, when updating core packages:
+
+<AccordionGroup>
+  <Accordion title="Patch Version (2.4.5 → 2.4.6)">
+    Bump the patch version if:
+    - Bug fixes only
+    - No breaking changes
+    - Can be released without a new Meteor version
+    
+    ```javascript
+    Package.describe({
+      version: '2.4.6', // was 2.4.5
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Minor Version (2.4.5 → 2.5.0)">
+    Bump the minor version if:
+    - New features added
+    - Changes affect multiple parts
+    - Depends on meteor-tool changes
+    - Requires a new Meteor release
+    
+    ```javascript
+    Package.describe({
+      version: '2.5.0', // was 2.4.5
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Major Version (2.4.5 → 3.0.0)">
+    Bump the major version if:
+    - Breaking changes
+    - Major rewrite
+    - API changes that break existing code
+    
+    ```javascript
+    Package.describe({
+      version: '3.0.0', // was 2.4.5
+    });
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Pre-Publish Checklist
+
+<Steps>
+  <Step title="Remove local node_modules">
+    ```bash
+    rm -rf node_modules
+    ```
+
+    <Warning>
+      Local `node_modules` directories can conflict with `Npm.depends()` when published.
+    </Warning>
+  </Step>
+
+  <Step title="Test the package">
+    ```bash
+    meteor test-packages ./
+    ```
+  </Step>
+
+  <Step title="Verify package.js">
+    Check that:
+    - Version number is correct
+    - Summary is clear and concise
+    - Git URL is correct
+    - All dependencies are listed
+  </Step>
+
+  <Step title="Update README.md">
+    Ensure your README includes:
+    - Installation instructions
+    - Usage examples
+    - API documentation
+    - Changelog
+  </Step>
+
+  <Step title="Check for secrets">
+    <Warning>
+      Never commit or publish:
+      - `.env` files
+      - `credentials.json`
+      - API keys
+      - Passwords
+    </Warning>
+  </Step>
+</Steps>
+
+## Package Maintenance
+
+### Deprecating a Package
+
+If you're ending development or have a replacement:
+
+```javascript
+Package.describe({
+  summary: "Old package - use username:new-package instead",
+  version: '1.0.0',
+  deprecated: true
+});
+```
+
+Or with a string message:
+
+```javascript
+Package.describe({
+  deprecated: "This package is no longer maintained. Use username:new-package instead."
+});
+```
+
+### Transferring Ownership
+
+Contact Meteor support to transfer package ownership to another developer.
+
+### Version History
+
+Keep a CHANGELOG.md:
+
+```markdown
+# Changelog
+
+## 1.1.0 - 2024-01-15
+### Added
+- New feature X
+- Support for Y
+
+### Fixed
+- Bug with Z
+
+## 1.0.0 - 2023-12-01
+- Initial release
+```
+
+## Understanding the Package Cache
+
+Published packages are stored in Meteor's package cache:
+
+- **macOS/Linux**: `~/.meteor/packages`
+- **Windows**: `%LOCALAPPDATA%\.meteor\packages`
+
+### Cache Format
+
+The on-disk format is different from source:
+- Optimized for loading, not editing
+- Includes pre-built code for all architectures
+- Contains metadata and dependency information
+
+This is called an **Isopack** (Isobuild package format).
+
+## Package Discovery
+
+Once published, your package appears:
+
+1. **Atmosphere website**: https://atmospherejs.com/username/package-name
+2. **Meteor search**: `meteor search package-name`
+3. **Package stats**: Daily download statistics
+
+### Package Metadata API
+
+Meteor provides a DDP interface at `packages.meteor.com` to query:
+- Package information
+- Version details
+- Download statistics
+- Dependencies
+
+See the [Package Server API](/api/package-server) for details.
+
+## Publishing Releases (Core Team)
+
+For Meteor core team members publishing releases:
+
+```bash
+meteor publish-release --create-track
+```
+
+This requires:
+- JSON configuration file
+- Release track name
+- Package versions mapping
+- Meteor tool version
+
+Community members can create custom release tracks for forked versions.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Error: Package name must include namespace">
+    Your package name must be `username:package-name`, not just `package-name`.
+    
+    Fix in `package.js`:
+    ```javascript
+    Package.describe({
+      name: 'username:my-package', // Not 'my-package'
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Error: Version already exists">
+    You must bump the version number before publishing:
+    ```javascript
+    Package.describe({
+      version: '1.0.1', // Increment from 1.0.0
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Package not working on Linux/Windows">
+    Publish architecture-specific builds:
+    ```bash
+    meteor publish-for-arch username:package@version
+    ```
+  </Accordion>
+
+  <Accordion title="Error: Not authorized">
+    Make sure you're logged in:
+    ```bash
+    meteor logout
+    meteor login
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+1. **Test before publishing**: Always run tests and verify functionality
+2. **Follow semantic versioning**: Make version numbers meaningful
+3. **Document breaking changes**: Clearly note API changes
+4. **Keep README updated**: Documentation is critical for adoption
+5. **Respond to issues**: Maintain your package actively
+6. **Support multiple Meteor versions**: Use `api.versionsFrom(['1.12.1', '2.8.1'])`
+
+## Contributing to Core Packages
+
+To contribute to Meteor core packages:
+
+1. Fork the [Meteor repository](https://github.com/meteor/meteor)
+2. Make changes to packages in `packages/` directory
+3. Test thoroughly: `meteor test-packages ./packages/package-name`
+4. Submit a pull request
+5. Follow the [contributing guidelines](https://github.com/meteor/meteor/blob/devel/CONTRIBUTING.md)
+
+<Note>
+Core packages don't have `.versions` files—they're released from a checkout of Meteor.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Atmosphere" icon="globe" href="/packages/atmosphere">
+    Explore the package ecosystem
+  </Card>
+  <Card title="Package.js API" icon="code" href="/api/packagejs">
+    Complete API reference
+  </Card>
+  <Card title="Package Server API" icon="server" href="/api/package-server">
+    Query package metadata
+  </Card>
+</CardGroup>

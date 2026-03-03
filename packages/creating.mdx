@@ -1,0 +1,444 @@
+---
+title: Creating Packages
+description: Step-by-step guide to creating Meteor packages
+---
+
+Meteor packages are the primary way to organize and share code. This guide shows you how to create your own packages.
+
+## Creating a New Package
+
+<Steps>
+  <Step title="Generate the package">
+    Use the Meteor CLI to create a new package:
+
+    ```bash
+    meteor create --package my-package
+    ```
+
+    <Note>
+      If you plan to publish to Atmosphere, use the format `username:my-package` where `username` is your Meteor Developer username.
+    </Note>
+
+    This generates:
+
+    ```
+    my-package/
+    ├── README.md
+    ├── package.js
+    ├── my-package.js
+    └── my-package-tests.js
+    ```
+  </Step>
+
+  <Step title="Define package metadata">
+    Edit `package.js` to describe your package:
+
+    ```javascript
+    Package.describe({
+      name: 'username:my-package',
+      version: '1.0.0',
+      summary: 'Short one-sentence description',
+      git: 'https://github.com/username/my-package.git',
+      documentation: 'README.md'
+    });
+    ```
+  </Step>
+
+  <Step title="Configure package dependencies">
+    Specify which packages your package needs:
+
+    ```javascript
+    Package.onUse(function(api) {
+      // Use package versions from Meteor 1.12.1
+      api.versionsFrom('1.12.1');
+      
+      // Depend on ecmascript (both client and server)
+      api.use('ecmascript');
+      
+      // Depend on tracker (client only)
+      api.use('tracker', 'client');
+      
+      // Depend on check (server only)
+      api.use('check', 'server');
+      
+      // Optional dependency
+      api.use('blaze', 'client', { weak: true });
+    });
+    ```
+  </Step>
+
+  <Step title="Add source files">
+    Add your package code using `api.mainModule()` or `api.addFiles()`:
+
+    ```javascript
+    Package.onUse(function(api) {
+      // Modern approach: Use mainModule
+      api.mainModule('my-package.js', 'client');
+      api.mainModule('my-package-server.js', 'server');
+      
+      // Or add files directly
+      api.addFiles('my-package.js', 'client');
+      api.addFiles('my-package.css', 'client');
+    });
+    ```
+  </Step>
+
+  <Step title="Export symbols">
+    Make your package's functionality available to users:
+
+    ```javascript
+    // In my-package.js
+    export const myFunction = () => {
+      return 'Hello from my package!';
+    };
+    
+    export class MyClass {
+      constructor() {
+        this.name = 'MyClass';
+      }
+    }
+    ```
+
+    Users import with:
+
+    ```javascript
+    import { myFunction, MyClass } from 'meteor/username:my-package';
+    ```
+  </Step>
+
+  <Step title="Add the package to your app">
+    ```bash
+    meteor add username:my-package
+    ```
+  </Step>
+</Steps>
+
+## Real Package Examples
+
+Let's look at real packages from the Meteor repository:
+
+### Simple Package: Tracker
+
+From `packages/tracker/package.js`:
+
+```javascript
+Package.describe({
+  summary: "Dependency tracker to allow reactive callbacks",
+  version: '1.3.4',
+});
+
+Package.onUse(function (api) {
+  api.use("ecmascript");
+  api.addFiles("tracker.js");
+  api.export("Tracker");
+  api.export("Deps");
+  api.addAssets("tracker.d.ts", ["client", "server"]);
+});
+
+Package.onTest(function (api) {
+  api.use('tinytest');
+  api.use('test-helpers');
+  api.use('tracker');
+  api.addFiles('tracker_tests.js', 'client');
+});
+```
+
+### Complex Package: Accounts Base
+
+From `packages/accounts-base/package.js`:
+
+```javascript
+Package.describe({
+  summary: "A user account system",
+  version: "3.2.0",
+});
+
+Package.onUse((api) => {
+  api.use("ecmascript", ["client", "server"]);
+  api.use("ddp-rate-limiter");
+  api.use("localstorage", "client");
+  api.use("tracker", "client");
+  api.use("check", "server");
+  api.use("random", ["client", "server"]);
+  api.use("ejson", "server");
+  api.use("callback-hook", ["client", "server"]);
+  api.use("reactive-var", "client");
+  api.use("url", ["client", "server"]);
+  api.use("ddp", ["client", "server"]);
+  api.use("mongo", ["client", "server"]);
+  
+  // Weak dependencies (optional)
+  api.use("blaze", "client", { weak: true });
+  api.use("autopublish", "server", { weak: true });
+  api.use("oauth-encryption", "server", { weak: true });
+  
+  api.export("Accounts");
+  
+  api.mainModule("server_main.js", "server");
+  api.mainModule("client_main.js", "client");
+  
+  api.addAssets("accounts-base.d.ts", "server");
+});
+```
+
+### Package with npm Dependencies: Mongo
+
+From `packages/mongo/package.js`:
+
+```javascript
+Package.describe({
+  summary: "Adaptor for using MongoDB and Minimongo over DDP",
+  version: "2.2.0",
+});
+
+Npm.depends({
+  "mongodb-uri": "0.9.7",
+  "lodash.times": "4.3.2",
+  "lodash.isempty": "4.4.0",
+  "lodash.has": "4.5.2",
+  "lodash.throttle": "4.1.1",
+  "lodash.once": "4.1.1",
+  "lodash.isobject": "3.0.2",
+  "lodash.clone": "4.5.0",
+});
+
+Package.onUse(function (api) {
+  api.use("npm-mongo", "server");
+  api.use("allow-deny");
+  api.use([
+    "random",
+    "ejson",
+    "minimongo",
+    "ddp",
+    "tracker",
+    "diff-sequence",
+    "mongo-id",
+    "check",
+    "ecmascript",
+    "typescript",
+  ]);
+  
+  api.export("Mongo");
+  // ... file configuration
+});
+```
+
+### Build Plugin Package: ECMAScript
+
+From `packages/ecmascript/package.js`:
+
+```javascript
+Package.describe({
+  name: 'ecmascript',
+  version: '0.17.0',
+  summary: 'Compiler plugin that supports ES2015+ in all .js files',
+  documentation: 'README.md',
+});
+
+Npm.depends({
+  '@babel/runtime': '7.20.7'
+});
+
+Package.registerBuildPlugin({
+  name: 'compile-ecmascript',
+  use: ['babel-compiler', 'react-fast-refresh'],
+  sources: ['plugin.js'],
+});
+
+Package.onUse(function(api) {
+  api.use('isobuild:compiler-plugin@1.0.0');
+  api.use('react-fast-refresh');
+  
+  api.imply('modules');
+  api.imply('ecmascript-runtime');
+  api.imply('babel-runtime');
+  api.imply('promise');
+  api.imply('dynamic-import');
+  
+  api.addFiles('ecmascript.js', 'server');
+  api.export('ECMAScript', 'server');
+});
+```
+
+## Adding Different File Types
+
+### JavaScript Files
+
+```javascript
+Package.onUse(function(api) {
+  api.mainModule('client.js', 'client');
+  api.mainModule('server.js', 'server');
+  api.mainModule('both.js'); // Both client and server
+});
+```
+
+### CSS Files
+
+```javascript
+api.addFiles('styles.css', 'client');
+```
+
+### Sass/Less Files
+
+```javascript
+// Immediately compiled and added
+api.addFiles('my-package.scss', 'client');
+
+// Lazy imports (only when imported)
+api.addFiles([
+  'stylesheets/_util.scss',
+  'stylesheets/_variables.scss'
+], 'client', { isImport: true });
+```
+
+### Assets (Images, Fonts, etc.)
+
+```javascript
+api.addAssets([
+  'font/OpenSans-Regular-webfont.eot',
+  'font/OpenSans-Regular-webfont.svg',
+  'font/OpenSans-Regular-webfont.ttf',
+  'font/OpenSans-Regular-webfont.woff',
+], 'client');
+```
+
+Access from client:
+```javascript
+// URL: /packages/username_my-package/font/OpenSans-Regular-webfont.eot
+```
+
+Access from server:
+```javascript
+import { Assets } from 'meteor/assets';
+const content = Assets.getText('font/OpenSans-Regular-webfont.eot');
+```
+
+### TypeScript Definition Files
+
+```javascript
+api.addAssets('my-package.d.ts', 'server');
+```
+
+## Testing Packages
+
+### Using Tinytest
+
+```javascript
+Package.onTest(function (api) {
+  api.use('tinytest');
+  api.use('my-package');
+  api.addFiles('my-package-tests.js');
+});
+```
+
+Run tests:
+
+```bash
+meteor test-packages ./
+```
+
+### Using Mocha
+
+```javascript
+Package.onTest((api) => {
+  api.use('my-package');
+  api.use('meteortesting:mocha');
+  api.mainModule('my-package-tests.js');
+});
+```
+
+Run tests:
+
+```bash
+meteor test-packages ./ --driver-package meteortesting:mocha
+```
+
+## Local Packages
+
+Create a local package for your app:
+
+```bash
+cd my-app
+meteor create --package my-local-package
+```
+
+This creates `packages/my-local-package/` in your app.
+
+Add it:
+
+```bash
+meteor add my-local-package
+```
+
+Local packages are great for:
+- Internal shared code across your app
+- Testing package development before publishing
+- App-specific functionality that's well-organized
+
+## Using METEOR_PACKAGE_DIRS
+
+Share packages across multiple apps:
+
+```bash
+# macOS/Linux
+export METEOR_PACKAGE_DIRS="../shared-packages:../more-packages"
+meteor run
+
+# Windows
+set METEOR_PACKAGE_DIRS=..\shared-packages;..\more-packages
+meteor run
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use semantic versioning">
+    - **Patch** (1.0.1): Bug fixes
+    - **Minor** (1.1.0): New features, backward compatible
+    - **Major** (2.0.0): Breaking changes
+  </Accordion>
+
+  <Accordion title="Specify minimum Meteor versions carefully">
+    ```javascript
+    // For maximum compatibility
+    api.versionsFrom(['1.12.1', '2.8.1']);
+    
+    // For accounts packages (avoid breaking changes in 2.3)
+    api.versionsFrom(['1.12.1', '2.3.6', '2.8.1']);
+    ```
+  </Accordion>
+
+  <Accordion title="Use weak dependencies for optional features">
+    ```javascript
+    // Package works with or without Blaze
+    api.use('blaze', 'client', { weak: true });
+    ```
+  </Accordion>
+
+  <Accordion title="Document your package well">
+    - Clear README.md
+    - API documentation
+    - Usage examples
+    - Version history
+  </Accordion>
+
+  <Accordion title="Include TypeScript definitions">
+    ```javascript
+    api.addAssets('my-package.d.ts', ['client', 'server']);
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Publishing Packages" icon="upload" href="/packages/publishing">
+    Learn how to publish your package to Atmosphere
+  </Card>
+  <Card title="Package.js API" icon="code" href="/api/packagejs">
+    Complete API reference for package.js
+  </Card>
+  <Card title="Build Plugins" icon="puzzle-piece" href="/api/build-plugins">
+    Create compilers, linters, and minifiers
+  </Card>
+</CardGroup>

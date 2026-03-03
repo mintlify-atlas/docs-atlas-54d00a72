@@ -1,0 +1,507 @@
+---
+title: Vue Integration
+description: Build progressive web applications with Vue and Meteor
+---
+
+Vue is a progressive framework for building user interfaces. Meteor provides excellent integration with Vue through specialized packages, combining Vue's reactive components with Meteor's real-time data layer.
+
+## Installation
+
+Create a new Vue app with Meteor:
+
+```bash
+meteor create my-app --vue
+```
+
+Or add Vue to an existing project:
+
+```bash
+meteor npm install --save vue
+```
+
+For Single File Component (`.vue`) support:
+
+```bash
+meteor add akryum:vue-component
+```
+
+## Project Structure
+
+A typical Vue+Meteor app consists of:
+
+```
+/client
+  main.html        # HTML with #app div
+  main.js          # Vue app initialization
+  App.vue          # Root component
+/imports
+  /api             # Collections and methods
+  /ui              # Vue components
+/server
+  main.js          # Server startup
+```
+
+## Basic Setup
+
+### HTML Template
+
+Create `/client/main.html` with the app container:
+
+```html
+<body>
+  <div id="app"></div>
+</body>
+```
+
+### Client Entry Point
+
+Initialize Vue in `/client/main.js`:
+
+```javascript
+import { createApp } from 'vue';
+import App from './App.vue';
+import './main.html';
+
+Meteor.startup(() => {
+  const app = createApp(App);
+  app.mount('#app');
+});
+```
+
+### Root Component
+
+Create `/client/App.vue`:
+
+```vue
+<template>
+  <div>
+    <p>This is a Vue component and below is the current date:<br />{{ date }}</p>
+  </div>
+</template>
+
+<script>
+export default {
+  data() {
+    return {
+      date: new Date(),
+    };
+  }
+}
+</script>
+
+<style scoped>
+p {
+  font-size: 2em;
+  text-align: center;
+}
+</style>
+```
+
+## Reactive Data Integration
+
+Integrate Meteor's reactive data system with Vue using `vue-meteor-tracker`:
+
+```bash
+meteor npm install --save vue-meteor-tracker
+```
+
+### Plugin Setup
+
+Register the plugin in `/client/main.js`:
+
+```javascript
+import { createApp } from 'vue';
+import VueMeteorTracker from 'vue-meteor-tracker';
+import App from './App.vue';
+import './main.html';
+
+const app = createApp(App);
+app.use(VueMeteorTracker);
+
+Meteor.startup(() => {
+  app.mount('#app');
+});
+```
+
+## Using Meteor Reactivity
+
+The `meteor` option in Vue components provides reactive Meteor data:
+
+```vue
+<template>
+  <div>
+    <div v-if="!$subReady.Time">Loading...</div>
+    <div v-else>
+      <p>Hello {{ hello }},<br>The time is now: {{ currentTime }}</p>
+      <button @click="updateTime">Update Time</button>
+      
+      <p>Startup times:</p>
+      <ul>
+        <li v-for="t in TimeCursor" :key="t._id">
+          {{ t.time }} - {{ t._id }}
+        </li>
+      </ul>
+    </div>
+  </div>
+</template>
+
+<script>
+import '/imports/collections/Time';
+
+export default {
+  data() {
+    return {
+      hello: 'World',
+      settings: Meteor.settings.public,
+    };
+  },
+  
+  methods: {
+    updateTime() {
+      Meteor.call('UpdateTime');
+    }
+  },
+  
+  // Meteor reactivity
+  meteor: {
+    // Subscriptions
+    $subscribe: {
+      'Time': []
+    },
+    
+    // Reactive helper - returns current time
+    currentTime() {
+      const t = Time.findOne('currentTime') || {};
+      return t.time;
+    },
+    
+    // Reactive cursor
+    TimeCursor() {
+      return Time.find({}, {
+        sort: { time: -1 }
+      });
+    },
+  }
+}
+</script>
+```
+
+## Collections and Publications
+
+<Tabs>
+  <Tab title="Collection">
+    Define a collection in `/imports/collections/Time.js`:
+
+    ```javascript
+    import { Mongo } from 'meteor/mongo';
+
+    export const Time = new Mongo.Collection('time');
+    ```
+  </Tab>
+  
+  <Tab title="Publication">
+    Create a publication in `/imports/publications/Time.js`:
+
+    ```javascript
+    import { Meteor } from 'meteor/meteor';
+    import { Time } from '../collections/Time';
+
+    Meteor.publish('Time', function () {
+      return Time.find({});
+    });
+    ```
+  </Tab>
+  
+  <Tab title="Method">
+    Define a method in `/imports/methods/UpdateTime.js`:
+
+    ```javascript
+    import { Meteor } from 'meteor/meteor';
+    import { Time } from '../collections/Time';
+
+    Meteor.methods({
+      UpdateTime() {
+        Time.upsert('currentTime', { $set: { time: new Date() } });
+      },
+    });
+    ```
+  </Tab>
+  
+  <Tab title="Server">
+    Import everything in `/server/main.js`:
+
+    ```javascript
+    import { Meteor } from 'meteor/meteor';
+    import '/imports/collections/Time';
+    import '/imports/publications/Time';
+    import '/imports/methods/UpdateTime';
+
+    Meteor.startup(() => {
+      Meteor.call('UpdateTime');
+      Time.insert({ time: new Date() });
+    });
+    ```
+  </Tab>
+</Tabs>
+
+## Router Integration
+
+Vue Router works seamlessly with Meteor:
+
+```bash
+meteor npm install vue-router
+```
+
+### Router Configuration
+
+```javascript
+import { createRouter, createWebHistory } from 'vue-router';
+import Home from './pages/Home.vue';
+import Tasks from './pages/Tasks.vue';
+
+const routes = [
+  { path: '/', component: Home },
+  { path: '/tasks', component: Tasks },
+];
+
+const router = createRouter({
+  history: createWebHistory(),
+  routes,
+});
+
+export default router;
+```
+
+### Using the Router
+
+```javascript
+import { createApp } from 'vue';
+import VueMeteorTracker from 'vue-meteor-tracker';
+import router from './router';
+import App from './App.vue';
+
+const app = createApp(App);
+app.use(VueMeteorTracker);
+app.use(router);
+
+Meteor.startup(() => {
+  app.mount('#app');
+});
+```
+
+In your root component:
+
+```vue
+<template>
+  <div class="p-8">
+    <AppMenu />
+    <router-view />
+  </div>
+</template>
+
+<script setup>
+import AppMenu from './components/AppMenu.vue';
+</script>
+```
+
+## Server-Side Rendering (SSR)
+
+Meteor supports Vue SSR using the `akryum:vue-ssr` package:
+
+```bash
+meteor add akryum:vue-ssr
+meteor npm install --save vue-server-renderer
+```
+
+### Basic SSR Setup
+
+In `/server/main.js`:
+
+```javascript
+import { VueSSR } from 'meteor/akryum:vue-ssr';
+import createApp from './app';
+
+VueSSR.createApp = function () {
+  const { app } = createApp();
+  return { app };
+};
+```
+
+### SSR with Routing
+
+```javascript
+import { VueSSR } from 'meteor/akryum:vue-ssr';
+import createApp from './app';
+
+VueSSR.createApp = function (context) {
+  const { app, router } = createApp();
+  
+  // Set router location from context
+  router.push(context.url);
+  
+  return { app };
+};
+```
+
+### Async Data Hydration
+
+For components with async data requirements:
+
+```javascript
+VueSSR.createApp = function (context) {
+  return new Promise((resolve, reject) => {
+    const { app, router, store } = createApp({ ssr: true });
+    
+    router.push(context.url);
+    
+    router.onReady(async () => {
+      const matchedComponents = router.getMatchedComponents();
+      
+      if (!matchedComponents.length) {
+        reject(new Error('not-found'));
+      }
+      
+      // Get components with asyncData
+      const componentsWithAsyncData = matchedComponents
+        .filter(component => component.asyncData);
+      
+      // Call asyncData methods
+      const asyncDataPromises = componentsWithAsyncData.map(component => (
+        component.asyncData({ store, route: router.currentRoute })
+      ));
+      
+      // Wait for all async data
+      await Promise.all(asyncDataPromises);
+      
+      // Serialize state for client hydration
+      const js = `window.__INITIAL_STATE__=${JSON.stringify(store.state)};`;
+      
+      resolve({ app, js });
+    });
+  });
+};
+```
+
+### Client Hydration
+
+In `/client/main.js`:
+
+```javascript
+import { createApp } from 'vue';
+import createAppInstance from './app';
+
+Meteor.startup(() => {
+  const { app, store } = createAppInstance({ ssr: false });
+  
+  // Hydrate Vuex store with SSR data
+  if (window.__INITIAL_STATE__) {
+    store.replaceState(window.__INITIAL_STATE__);
+  }
+  
+  app.mount('#app');
+});
+```
+
+## Composition API
+
+Vue 3 Composition API works perfectly with Meteor:
+
+```vue
+<template>
+  <div>
+    <h2>Learn Meteor!</h2>
+    <ul>
+      <li v-for="link in links" :key="link._id">
+        <a :href="link.url" target="_blank">{{ link.title }}</a>
+      </li>
+    </ul>
+  </div>
+</template>
+
+<script setup>
+import { ref } from 'vue';
+import { useTracker } from 'vue-meteor-tracker';
+import { LinksCollection } from '../api/links';
+
+const links = useTracker(() => {
+  Meteor.subscribe('links');
+  return LinksCollection.find({}).fetch();
+});
+</script>
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Remove autopublish">
+    Always remove the `autopublish` package in production:
+    
+    ```bash
+    meteor remove autopublish
+    ```
+    
+    This ensures you explicitly control what data is published to clients.
+  </Accordion>
+  
+  <Accordion title="Use scoped styles">
+    Use `<style scoped>` in `.vue` files to prevent style leakage:
+    
+    ```vue
+    <style scoped>
+    p {
+      font-size: 2em;
+    }
+    </style>
+    ```
+  </Accordion>
+  
+  <Accordion title="Leverage reactive cursors">
+    Return cursors directly from `meteor` helpers for automatic reactivity:
+    
+    ```javascript
+    meteor: {
+      tasks() {
+        return Tasks.find({}); // Returns cursor, not array
+      }
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Check subscription status">
+    Use `$subReady` to show loading states:
+    
+    ```vue
+    <div v-if="!$subReady.tasks">Loading...</div>
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Style Guide
+
+Follow both guides for best results:
+
+<CardGroup cols={2}>
+  <Card title="Meteor Style Guide" icon="meteor" href="https://guide.meteor.com/code-style.html">
+    Meteor's code style and structure recommendations
+  </Card>
+  <Card title="Vue Style Guide" icon="vuejs" href="https://vuejs.org/style-guide/">
+    Vue's official style guide and best practices
+  </Card>
+</CardGroup>
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="Vue Tutorial" icon="graduation-cap" href="https://vue-tutorial.meteor.com">
+    Step-by-step tutorial for building Vue apps with Meteor
+  </Card>
+  <Card title="Vue Meteor Tracker" icon="github" href="https://github.com/meteor-vue/vue-meteor-tracker">
+    Integration package for Vue and Meteor reactivity
+  </Card>
+  <Card title="Vue Documentation" icon="book" href="https://vuejs.org">
+    Official Vue 3 documentation and guides
+  </Card>
+  <Card title="Vue SSR Guide" icon="server" href="https://vuejs.org/guide/scaling-up/ssr.html">
+    Server-side rendering with Vue
+  </Card>
+</CardGroup>

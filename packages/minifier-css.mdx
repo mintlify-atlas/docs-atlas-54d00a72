@@ -1,0 +1,457 @@
+---
+title: minifier-css
+description: CSS minifier and processing toolkit using PostCSS and cssnano
+---
+
+The `minifier-css` package provides CSS parsing, minification, and transformation capabilities for Meteor applications using PostCSS and cssnano. It handles URL rewriting, source maps, and CSS merging.
+
+## Overview
+
+This package exports `CssTools`, a comprehensive toolkit for CSS processing. It uses modern PostCSS infrastructure for parsing and cssnano for minification, making it compatible with current CSS standards.
+
+## Dependencies
+
+```json
+{
+  "postcss": "8.5.1",
+  "cssnano": "5.1.15"
+}
+```
+
+## Installation
+
+Included by default in Meteor's build system. For manual use:
+
+```javascript
+api.use('minifier-css', 'server');
+```
+
+## API
+
+### CssTools.parseCss(cssText, options)
+
+Parse CSS string into a PostCSS AST (Abstract Syntax Tree).
+
+**Parameters:**
+- `cssText` (string): CSS content to parse
+- `options` (Object): PostCSS parser options
+  - `from` (string): File path for source maps (formerly `source`)
+
+**Returns:** PostCSS Root AST
+
+**Example:**
+```javascript
+import { CssTools } from 'meteor/minifier-css';
+
+const css = '.button { color: red; }';
+const ast = CssTools.parseCss(css, { from: 'button.css' });
+```
+
+### CssTools.stringifyCss(cssAst, options)
+
+Convert PostCSS AST back to CSS string with optional source maps.
+
+**Parameters:**
+- `cssAst` (Object): PostCSS Root AST
+- `options` (Object): PostCSS stringify options
+  - `map` (Object): Source map configuration (formerly `sourcemap`)
+  - `from` (string): Source file path
+
+**Returns:** Object with:
+- `code` (string): Generated CSS string
+- `map` (Object|null): Source map if enabled
+
+**Example:**
+```javascript
+const ast = CssTools.parseCss('.button { color: red; }');
+const result = CssTools.stringifyCss(ast, {
+  map: {
+    inline: false,
+    annotation: false,
+    sourcesContent: false
+  }
+});
+
+console.log(result.code); // CSS string
+console.log(result.map);  // Source map JSON
+```
+
+### CssTools.minifyCss(cssText)
+
+Minify CSS using cssnano in safe mode.
+
+**Parameters:**
+- `cssText` (string): CSS to minify
+
+**Returns:** Promise\<string[]\> - Array containing minified CSS
+
+**Example:**
+```javascript
+const css = `
+  .button {
+    color: red;
+    background: blue;
+  }
+`;
+
+const minified = await CssTools.minifyCss(css);
+console.log(minified[0]);
+// Output: ".button{color:red;background:blue}"
+```
+
+### CssTools.minifyCssAsync(cssText)
+
+Alias for `minifyCss()`. Both methods are asynchronous.
+
+**Example:**
+```javascript
+const result = await CssTools.minifyCssAsync(cssText);
+```
+
+### CssTools.mergeCssAsts(cssAsts, warnCb)
+
+Merge multiple CSS ASTs into a single AST, handling imports and charset rules.
+
+**Parameters:**
+- `cssAsts` (Array): Array of PostCSS Root objects
+- `warnCb` (Function): Callback for warnings `(filename, message) => {}`
+
+**Returns:** PostCSS Root object
+
+**Example:**
+```javascript
+const ast1 = CssTools.parseCss('@import "base.css"; .btn { }');
+ast1.filename = 'buttons.css';
+
+const ast2 = CssTools.parseCss('.link { color: blue; }');
+ast2.filename = 'links.css';
+
+const merged = CssTools.mergeCssAsts([ast1, ast2], (file, msg) => {
+  console.warn(`${file}: ${msg}`);
+});
+```
+
+**Merge behavior:**
+- `@import` rules are moved to the beginning
+- `@charset` rules are removed (UTF-8 assumed)
+- Warns about mid-file imports
+- URL paths are rewritten to absolute
+
+### CssTools.rewriteCssUrls(ast)
+
+Rewrite relative URLs in CSS to absolute paths.
+
+**Parameters:**
+- `ast` (Object): PostCSS Root AST (modified in place)
+
+**Returns:** Undefined (modifies AST in place)
+
+**Example:**
+```javascript
+const css = '.bg { background: url("../images/bg.png"); }';
+const ast = CssTools.parseCss(css);
+ast.filename = '/client/styles/main.css';
+
+CssTools.rewriteCssUrls(ast);
+const result = CssTools.stringifyCss(ast);
+// URLs are now absolute: url("/client/images/bg.png")
+```
+
+## Configuration
+
+### Minification Options
+
+The package uses cssnano in safe mode:
+
+```javascript:packages/minifier-css/minifier.js
+await postcss([cssnano({ safe: true })])
+  .process(cssText, { from: void 0 })
+```
+
+**Safe mode prevents:**
+- Unsafe selector merging
+- Aggressive shorthand optimization
+- Removal of potentially needed rules
+
+### Source Maps
+
+Enable source maps during stringification:
+
+```javascript
+const options = {
+  map: {
+    inline: false,        // Don't inline source map
+    annotation: false,    // Don't add source map comment
+    sourcesContent: false // Don't include source content
+  }
+};
+
+const result = CssTools.stringifyCss(ast, options);
+```
+
+## URL Rewriting
+
+### How It Works
+
+The package rewrites relative URLs to work correctly when CSS files are merged:
+
+```javascript:packages/minifier-css/minifier.js
+var cssUrlRegex = /url\s*\(\s*(['"]?)(.+?)\1\s*\)/gi;
+
+while (parts = cssUrlRegex.exec(value)) {
+  const resource = url.parse(parts[2]);
+  
+  // Skip absolute URLs, protocols, network paths, and fragments
+  if (resource.protocol !== null ||
+      resource.href.startsWith('//') ||
+      resource.href.startsWith('#')) {
+    continue;
+  }
+  
+  // Rewrite relative to absolute
+  let absolutePath = isRelative(resource.path)
+    ? pathJoin(basePath, resource.path)
+    : resource.path;
+}
+```
+
+### URL Patterns
+
+**Not rewritten:**
+- `url(http://example.com/img.png)` - HTTP/HTTPS
+- `url(//cdn.example.com/img.png)` - Network path
+- `url(data:image/png;base64,...)` - Data URLs
+- `url(#fragment)` - Fragments
+
+**Rewritten:**
+- `url(../images/bg.png)` - Relative paths
+- `url(./icon.png)` - Current directory
+- `url(bg.png)` - Relative to CSS file
+
+### Package Path Handling
+
+Special handling for Meteor packages:
+
+```javascript:packages/minifier-css/minifier.js
+if (! basePath.match(/^\/?packages\//i)) {
+  basePath = "/";
+}
+```
+
+- Files in `/packages/*` keep their path prefix
+- Other files are served from root `/`
+
+### Deployment Prefix Support
+
+URLs are made relative to merged CSS for ROOT_URL support:
+
+```javascript:packages/minifier-css/minifier.js
+const relativeToMergedCss = pathRelative(mergedCssPath, absolutePath);
+const newCssUrl = `url(${quote}${relativeToMergedCss}${quote})`;
+```
+
+Example:
+```javascript
+// Original: url("../images/bg.png")
+// After merge: url("images/bg.png")
+// With ROOT_URL=http://example.com/app/
+// Browser resolves to: http://example.com/app/images/bg.png
+```
+
+## Charset Handling
+
+### UTF-8 Only
+
+The package assumes all CSS is UTF-8:
+
+```javascript:packages/minifier-css/minifier.js
+const charsetRules = ast.nodes.filter(rulesPredicate('charset'));
+
+if (charsetRules.some((rule) => {
+  return ! /^(['"])UTF-8\1$/.test(rule.params);
+})) {
+  warnCb(
+    ast.filename,
+    '@charset rules in this file will be ignored as UTF-8 is the ' +
+    'only encoding supported'
+  );
+}
+
+ast.nodes = ast.nodes.filter(rulesPredicate('charset', true));
+```
+
+**Valid charset rules:**
+- `@charset "UTF-8";`
+- `@charset 'UTF-8';`
+
+**All other charsets:** Removed with warning
+
+## Import Handling
+
+### Import Extraction
+
+Imports are extracted and moved to file beginning:
+
+```javascript:packages/minifier-css/minifier.js
+let importCount = 0;
+for (let i = 0; i < ast.nodes.length; i++) {
+  if (! rulesPredicate(['import', 'comment'])(ast.nodes[i])) {
+    importCount = i;
+    break;
+  }
+}
+
+const imports = ast.nodes.splice(0, importCount);
+newAst.nodes.push(...imports);
+```
+
+### Mid-File Import Warning
+
+Warns about imports after other rules:
+
+```javascript:packages/minifier-css/minifier.js
+if (ast.nodes.some(rulesPredicate('import'))) {
+  warnCb(
+    ast.filename,
+    'There are some @import rules in the middle of a file. This ' +
+    'might be a bug, as imports are only valid at the beginning of ' +
+    'a file.'
+  );
+}
+```
+
+## Performance Optimization
+
+Functions are profiled when available:
+
+```javascript:packages/minifier-css/minifier.js
+if (typeof Profile !== 'undefined') {
+  [
+    'parseCss',
+    'stringifyCss',
+    'minifyCss',
+    'minifyCssAsync',
+    'mergeCssAsts',
+    'rewriteCssUrls',
+  ].forEach(funcName => {
+    CssTools[funcName] = Profile(`CssTools.${funcName}`, CssTools[funcName]);
+  });
+}
+```
+
+## Backwards Compatibility
+
+### Legacy css-parse/css-stringify
+
+The package maintains compatibility with the old API:
+
+```javascript:packages/minifier-css/minifier.js
+// Legacy: { source: 'filename' }
+if (options.source) {
+  options.from = options.source;
+  delete options.source;
+}
+
+// Legacy: { sourcemap: true }
+if (options.sourcemap) {
+  options.map = {
+    inline: false,
+    annotation: false,
+    sourcesContent: false,
+  };
+  delete options.sourcemap;
+}
+```
+
+## Complete Example
+
+```javascript
+import { CssTools } from 'meteor/minifier-css';
+
+// Parse multiple CSS files
+const css1 = CssTools.parseCss(`
+  @import url("reset.css");
+  .button { background: url("../img/btn.png"); }
+`);
+css1.filename = '/client/styles/buttons.css';
+
+const css2 = CssTools.parseCss(`
+  .link { color: blue; }
+`);
+css2.filename = '/client/styles/links.css';
+
+// Merge ASTs
+const merged = CssTools.mergeCssAsts([css1, css2], (file, msg) => {
+  console.warn(`Warning in ${file}: ${msg}`);
+});
+
+// Stringify with source maps
+const { code, map } = CssTools.stringifyCss(merged, {
+  map: {
+    inline: false,
+    annotation: false,
+    sourcesContent: false
+  }
+});
+
+// Minify the result
+const [minified] = await CssTools.minifyCss(code);
+
+console.log('Minified CSS:', minified);
+console.log('Source map:', map);
+```
+
+## Testing
+
+Comprehensive test suite:
+
+```javascript
+Package.onTest(function (api) {
+  api.use('ecmascript');
+  api.use('tinytest');
+  api.addFiles([
+    'minifier-tests.js',
+    'minifier-async-tests.js',
+    'urlrewriting-tests.js'
+  ], 'server');
+});
+```
+
+Run tests:
+```bash
+meteor test-packages ./packages/minifier-css
+```
+
+## Common Issues
+
+### Issue: URLs broken after merge
+
+**Solution:** Ensure `ast.filename` is set with the source file path before merging:
+```javascript
+const ast = CssTools.parseCss(cssText);
+ast.filename = '/path/to/source.css';
+```
+
+### Issue: Charset warnings
+
+**Solution:** Remove `@charset` rules or ensure they specify UTF-8:
+```css
+/* Good */
+@charset "UTF-8";
+
+/* Bad - will be removed */
+@charset "ISO-8859-1";
+```
+
+### Issue: Mid-file imports
+
+**Solution:** Move all `@import` statements to the beginning:
+```css
+/* Good */
+@import url("base.css");
+.button { }
+
+/* Bad */
+.button { }
+@import url("base.css"); /* Warning */
+```

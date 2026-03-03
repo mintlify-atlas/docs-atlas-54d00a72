@@ -1,0 +1,206 @@
+---
+title: 'Session'
+description: 'Client-side reactive data store'
+---
+
+# Session API
+
+Session provides a global object on the client that you can use to store an arbitrary set of key-value pairs. Use it to store things like the currently selected item in a list.
+
+Source: `packages/session/session.js`
+
+**Note:** Session is a ReactiveDict instance. All methods are reactive data sources.
+
+**Locus:** Client only
+
+## Session.set()
+
+Set a variable in the session. Notify any listeners that the value has changed (eg: redraw templates, and rerun any `Tracker.autorun` computations that called `Session.get` on this key).
+
+<ParamField body="key" type="string" required>
+  The key to set, eg, `selectedItem`
+</ParamField>
+
+<ParamField body="value" type="any">
+  The new value for `key`. Can be any EJSON-compatible value, or `undefined`.
+</ParamField>
+
+```javascript
+Session.set('selectedItem', 'item-1');
+Session.set('currentPage', 5);
+Session.set('userData', { name: 'John', age: 30 });
+
+// Set to undefined to "unset" the key
+Session.set('selectedItem', undefined);
+```
+
+## Session.setDefault()
+
+Set a variable in the session if it hasn't been set before. Otherwise works exactly the same as `Session.set`.
+
+<ParamField body="key" type="string" required>
+  The key to set, eg, `selectedItem`
+</ParamField>
+
+<ParamField body="value" type="any">
+  The new value for `key`
+</ParamField>
+
+```javascript
+// First time - sets the value
+Session.setDefault('currentPage', 1);
+
+// Second time - does nothing, value remains 1
+Session.setDefault('currentPage', 5);
+
+console.log(Session.get('currentPage')); // 1
+```
+
+## Session.get()
+
+Get the value of a session variable. If inside a reactive computation, invalidate the computation the next time the value of the variable is changed by `Session.set`. Returns a clone of the session value, so if it's an object or an array, mutating the returned value has no effect on the value stored in the session.
+
+<ParamField body="key" type="string" required>
+  The name of the session variable to return
+</ParamField>
+
+**Returns:** The value of the session variable, or `undefined` if not set.
+
+```javascript
+const selectedItem = Session.get('selectedItem');
+const currentPage = Session.get('currentPage');
+
+// Reactive usage in template helper
+Template.myTemplate.helpers({
+  selectedItem() {
+    return Session.get('selectedItem');
+  }
+});
+
+// Reactive usage with Tracker
+Tracker.autorun(() => {
+  const page = Session.get('currentPage');
+  console.log('Current page:', page);
+});
+```
+
+## Session.equals()
+
+Test if a session variable is equal to a value. If inside a reactive computation, invalidate the computation the next time the variable changes to or from the value.
+
+<ParamField body="key" type="string" required>
+  The name of the session variable to test
+</ParamField>
+
+<ParamField body="value" type="string | number | boolean | null | undefined" required>
+  The value to test against
+</ParamField>
+
+**Returns:** `boolean` - True if values are equal.
+
+```javascript
+Session.set('currentPage', 1);
+
+if (Session.equals('currentPage', 1)) {
+  console.log('On first page');
+}
+
+// More efficient than Session.get() for equality checks
+// This only reruns when the value changes TO or FROM 1
+Tracker.autorun(() => {
+  if (Session.equals('currentPage', 1)) {
+    console.log('On first page');
+  } else {
+    console.log('Not on first page');
+  }
+});
+```
+
+## Complete Example
+
+```javascript
+import { Template } from 'meteor/templating';
+import { Session } from 'meteor/session';
+
+// Initialize default values
+Meteor.startup(() => {
+  Session.setDefault('selectedItem', null);
+  Session.setDefault('sortOrder', 'asc');
+});
+
+// Template helper using Session
+Template.itemList.helpers({
+  items() {
+    const sortOrder = Session.get('sortOrder');
+    return Items.find({}, { 
+      sort: { name: sortOrder === 'asc' ? 1 : -1 } 
+    });
+  },
+  
+  isSelected(itemId) {
+    return Session.equals('selectedItem', itemId);
+  },
+  
+  selectedItem() {
+    const itemId = Session.get('selectedItem');
+    return itemId ? Items.findOne(itemId) : null;
+  }
+});
+
+// Template events
+Template.itemList.events({
+  'click .item'(event) {
+    const itemId = this._id;
+    Session.set('selectedItem', itemId);
+  },
+  
+  'click .toggle-sort'(event) {
+    const current = Session.get('sortOrder');
+    Session.set('sortOrder', current === 'asc' ? 'desc' : 'asc');
+  },
+  
+  'click .clear-selection'(event) {
+    Session.set('selectedItem', null);
+  }
+});
+```
+
+## Persistence
+
+By default, Session variables are not persisted across page reloads. If you need persistence, consider using:
+
+- `localStorage` for simple key-value storage
+- `ReactiveDict` with a name parameter for named reactive dictionaries
+- Third-party packages like `u2622:persistent-session`
+
+```javascript
+import { ReactiveDict } from 'meteor/reactive-dict';
+
+// Named reactive dict for persistence
+const AppState = new ReactiveDict('appState');
+
+AppState.set('theme', 'dark');
+const theme = AppState.get('theme');
+```
+
+## Best Practices
+
+1. **Use for UI state only**: Session is best for temporary UI state like selected items, current page, or modal visibility.
+
+2. **Initialize with setDefault**: Use `Session.setDefault()` to set initial values to avoid undefined errors.
+
+3. **Use equals() for comparisons**: `Session.equals()` is more efficient than `Session.get()` when checking for specific values.
+
+4. **Clear on navigation**: Consider clearing session variables when navigating between routes to avoid stale state.
+
+```javascript
+// In router
+FlowRouter.route('/items', {
+  triggersEnter: [() => {
+    Session.set('selectedItem', null);
+  }],
+  action() {
+    BlazeLayout.render('mainLayout', { content: 'itemList' });
+  }
+});
+```

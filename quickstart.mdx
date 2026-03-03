@@ -1,80 +1,460 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: "Quick Start Guide"
+description: "Get started with Meteor in minutes. Create your first application and see real-time data synchronization in action."
 ---
 
-## Get started in three steps
+## Create Your First Meteor App
 
-Get your documentation site running locally and make your first customization.
+Get up and running with Meteor in just a few commands. This guide will have you building a functional application in under 10 minutes.
 
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+<Steps>
+  <Step title="Create a New Project">
+    Use the `meteor create` command to scaffold a new application:
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    ```bash
+    meteor create my-app
+    ```
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+    This creates a new directory with a complete Meteor application using React and Rspack (the default in Meteor 3.4+).
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    <Tip>
+      You can also create apps with different templates:
+      ```bash
+      meteor create my-app --react      # React app (default)
+      meteor create my-app --vue        # Vue 3 app
+      meteor create my-app --blaze      # Blaze app
+      meteor create my-app --typescript # TypeScript support
+      ```
+    </Tip>
+  </Step>
+  
+  <Step title="Navigate to Your Project">
+    Change into your new project directory:
+    
+    ```bash
+    cd my-app
+    ```
+  </Step>
+  
+  <Step title="Start the Development Server">
+    Run your application:
+    
+    ```bash
+    meteor
+    ```
+    
+    Meteor will:
+    - Start the development server
+    - Launch the embedded MongoDB database
+    - Build your application
+    - Open your app at `http://localhost:3000`
+    
+    <Info>
+      The first run may take a minute as Meteor downloads dependencies. Subsequent starts are much faster.
+    </Info>
+  </Step>
+  
+  <Step title="See Your App Running">
+    Open your browser to `http://localhost:3000` and you'll see your new Meteor application!
+    
+    The default app includes:
+    - A welcome message
+    - Sample data from MongoDB
+    - Hot Module Replacement (HMR) enabled
+    - React Fast Refresh configured
+  </Step>
+</Steps>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+## Project Structure
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+Your new Meteor app has the following structure:
 
-### Step 3: Go live
+```
+my-app/
+├── client/              # Client-side code
+│   └── main.jsx        # Client entry point
+├── server/              # Server-side code
+│   └── main.js         # Server entry point
+├── imports/             # Shared code
+│   ├── api/            # Collections, methods, publications
+│   └── ui/             # React components
+│       ├── App.jsx     # Root component
+│       └── Task.jsx    # Task component
+├── public/              # Static assets
+├── tests/               # Test files
+├── package.json         # npm dependencies
+└── .meteor/             # Meteor configuration
+    └── packages         # Meteor packages
+```
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+<Tabs>
+  <Tab title="Client">
+    The `client/` directory contains code that runs in the browser:
+    
+    ```javascript
+    // client/main.jsx
+    import React from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { Meteor } from 'meteor/meteor';
+    import { App } from '/imports/ui/App';
+    
+    Meteor.startup(() => {
+      const container = document.getElementById('react-target');
+      const root = createRoot(container);
+      root.render(<App />);
+    });
+    ```
+  </Tab>
+  
+  <Tab title="Server">
+    The `server/` directory contains code that runs on Node.js:
+    
+    ```javascript
+    // server/main.js
+    import { Meteor } from 'meteor/meteor';
+    import { TasksCollection } from '/imports/api/TasksCollection';
+    
+    const insertTask = (taskText) =>
+      TasksCollection.insertAsync({ text: taskText });
+    
+    Meteor.startup(async () => {
+      if ((await TasksCollection.find().countAsync()) === 0) {
+        [
+          'First Task',
+          'Second Task',
+          'Third Task',
+        ].forEach(insertTask);
+      }
+    });
+    ```
+  </Tab>
+  
+  <Tab title="Imports">
+    The `imports/` directory contains isomorphic code (runs on both client and server):
+    
+    ```javascript
+    // imports/api/TasksCollection.js
+    import { Mongo } from 'meteor/mongo';
+    
+    export const TasksCollection = new Mongo.Collection('tasks');
+    ```
+    
+    <Note>
+      Files in `imports/` are not automatically loaded. You must explicitly import them where needed.
+    </Note>
+  </Tab>
+</Tabs>
 
-## Next steps
+## Your First Changes
 
-Now that you have your docs running, explore these key features:
+Let's make some changes to see Hot Module Replacement in action:
+
+<Steps>
+  <Step title="Open the App Component">
+    Edit `imports/ui/App.jsx` in your favorite code editor.
+  </Step>
+  
+  <Step title="Modify the Header">
+    Change the header text:
+    
+    ```jsx
+    export const App = () => (
+      <div>
+        <h1>My Awesome To-Do App!</h1>
+        {/* rest of the component */}
+      </div>
+    );
+    ```
+    
+    Save the file and watch your browser update instantly without losing state!
+  </Step>
+  
+  <Step title="Add a New Task Component">
+    Create a new file `imports/ui/TaskForm.jsx`:
+    
+    ```jsx
+    import React, { useState } from 'react';
+    import { TasksCollection } from '/imports/api/TasksCollection';
+    
+    export const TaskForm = () => {
+      const [text, setText] = useState('');
+    
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        
+        await TasksCollection.insertAsync({
+          text: text.trim(),
+          createdAt: new Date(),
+        });
+        
+        setText('');
+      };
+    
+      return (
+        <form onSubmit={handleSubmit} className="task-form">
+          <input
+            type="text"
+            placeholder="Type to add new tasks"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+          <button type="submit">Add Task</button>
+        </form>
+      );
+    };
+    ```
+  </Step>
+  
+  <Step title="Use the Form Component">
+    Import and use it in `App.jsx`:
+    
+    ```jsx
+    import React from 'react';
+    import { useTracker, useSubscribe } from 'meteor/react-meteor-data';
+    import { TasksCollection } from '/imports/api/TasksCollection';
+    import { Task } from './Task';
+    import { TaskForm } from './TaskForm';
+    
+    export const App = () => {
+      const isLoading = useSubscribe('tasks');
+      const tasks = useTracker(() => 
+        TasksCollection.find({}, { sort: { createdAt: -1 } }).fetch()
+      );
+    
+      if (isLoading()) {
+        return <div>Loading...</div>;
+      }
+    
+      return (
+        <div>
+          <h1>My Awesome To-Do App!</h1>
+          <TaskForm />
+          <ul>
+            {tasks.map(task => (
+              <Task key={task._id} task={task} />
+            ))}
+          </ul>
+        </div>
+      );
+    };
+    ```
+    
+    You now have a working form that adds tasks in real-time!
+  </Step>
+</Steps>
+
+## Understanding Meteor's Magic
+
+### Real-Time Data Synchronization
+
+Meteor automatically synchronizes data between the client and server:
+
+<CodeGroup>
+```javascript Server (Automatic)
+// Data inserted on the server...
+await TasksCollection.insertAsync({ text: 'New task' });
+```
+
+```javascript Client (Automatic)
+// ...automatically appears on all connected clients!
+const tasks = useTracker(() => TasksCollection.find().fetch());
+// Tasks update automatically when data changes
+```
+</CodeGroup>
+
+<Info>
+  No REST APIs to write. No websocket code. No polling. Meteor handles all data synchronization automatically through DDP (Distributed Data Protocol).
+</Info>
+
+### Isomorphic JavaScript
+
+Write code once, run it everywhere:
+
+```javascript
+// This collection definition works on both client and server
+import { Mongo } from 'meteor/mongo';
+
+export const TasksCollection = new Mongo.Collection('tasks');
+
+// Client: Uses Minimongo (in-memory database)
+// Server: Uses MongoDB
+// Both: Same API!
+```
+
+### Integrated Build System
+
+Meteor automatically:
+- ✅ Transpiles ES6+ and JSX
+- ✅ Bundles your code
+- ✅ Hot reloads changes
+- ✅ Handles imports
+- ✅ Optimizes for production
+
+## Common Commands
+
+Here are the most useful Meteor commands:
+
+<CodeGroup>
+```bash Development
+# Run development server
+meteor
+
+# Run on a different port
+meteor --port 4000
+
+# Reset database
+meteor reset
+
+# Reset database only (keep code)
+meteor reset --db
+```
+
+```bash Packages
+# Add a Meteor package
+meteor add accounts-password
+
+# Add an npm package
+meteor npm install --save react-icons
+
+# Remove a package
+meteor remove insecure
+
+# List packages
+meteor list
+```
+
+```bash Production
+# Build for production
+meteor build ../output --architecture os.linux.x86_64
+
+# Run in production mode
+meteor run --production
+
+# Update Meteor version
+meteor update
+```
+
+```bash Testing
+# Run package tests
+meteor test-packages
+
+# Run app tests
+meteor test --driver-package meteortesting:mocha
+```
+</CodeGroup>
+
+## Adding Popular Packages
+
+### User Accounts
+
+```bash
+meteor add accounts-password
+meteor npm install --save bcrypt
+```
+
+```javascript
+import { Accounts } from 'meteor/accounts-base';
+
+// Create a user
+await Accounts.createUser({
+  username: 'meteorite',
+  password: 'password',
+  email: 'user@example.com'
+});
+
+// Login
+Meteor.loginWithPassword(username, password);
+```
+
+### Routing (React Router)
+
+```bash
+meteor npm install --save react-router-dom
+```
+
+```jsx
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+
+const App = () => (
+  <BrowserRouter>
+    <Routes>
+      <Route path="/" element={<Home />} />
+      <Route path="/tasks" element={<Tasks />} />
+    </Routes>
+  </BrowserRouter>
+);
+```
+
+### UI Libraries
+
+```bash
+# Material-UI
+meteor npm install --save @mui/material @emotion/react @emotion/styled
+
+# Tailwind CSS
+meteor npm install --save-dev tailwindcss postcss autoprefixer
+meteor add juliancwirko:postcss
+
+# Bootstrap
+meteor npm install --save bootstrap
+```
+
+## Development Tips
+
+<Tip>
+  **Use `meteor npm` instead of `npm`**: This ensures you're using the npm version bundled with Meteor, avoiding version conflicts.
+</Tip>
+
+<Tip>
+  **Install the Meteor DevTools Extension**: Available for Chrome and Firefox, it helps debug publications, methods, and data flow.
+</Tip>
+
+<Tip>
+  **Enable Source Maps**: Add `METEOR_PROFILE=1 meteor` to get detailed performance profiling.
+</Tip>
+
+<Warning>
+  **Remove `insecure` and `autopublish` before deploying**: These packages are helpful for prototyping but allow unrestricted database access.
+  
+  ```bash
+  meteor remove insecure autopublish
+  ```
+</Warning>
+
+## Next Steps
+
+You now have a working Meteor application! Here's what to explore next:
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Complete Tutorial" icon="graduation-cap" href="/tutorial">
+    Build a full-featured To-Do app with authentication, filtering, and more.
+  </Card>
+  
+  <Card title="API Reference" icon="book" href="https://docs.meteor.com">
+    Dive deep into Collections, Methods, Publications, and Accounts.
+  </Card>
+  
+  <Card title="Deployment" icon="rocket" href="https://docs.meteor.com/tutorials/deployment/deployment.html">
+    Learn how to deploy your app to Galaxy, Heroku, or your own server.
+  </Card>
+  
+  <Card title="Testing" icon="vial" href="https://docs.meteor.com/tutorials/testing/testing.html">
+    Write tests for your Meteor application with TinyTest or Jest.
+  </Card>
 </CardGroup>
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+## Get Help
+
+<CardGroup cols={3}>
+  <Card title="Forums" icon="comments" href="https://forums.meteor.com">
+    Ask questions and get help from the community.
+  </Card>
+  
+  <Card title="Discord" icon="discord" href="https://discord.gg/hZkTCaVjmT">
+    Chat with other Meteor developers in real-time.
+  </Card>
+  
+  <Card title="GitHub" icon="github" href="https://github.com/meteor/meteor">
+    Report bugs and request features.
+  </Card>
+</CardGroup>

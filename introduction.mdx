@@ -1,0 +1,267 @@
+---
+title: "Meteor - Ultra-Simple Full-Stack JavaScript Platform"
+description: "Build modern web and mobile applications with Meteor, the full-stack JavaScript platform that simplifies development with real-time data synchronization, integrated MongoDB, and isomorphic code."
+---
+
+<div align="center">
+  <img src="https://dmtgy0px4zdqn.cloudfront.net/images/meteor-logo.webp" alt="Meteor Logo" width="300" />
+</div>
+
+## What is Meteor?
+
+Meteor is an **ultra-simple** environment for building **modern** web applications. It's a full-stack JavaScript platform that allows you to build apps for web, iOS, Android, and desktop using the same codebase.
+
+<CardGroup cols={2}>
+  <Card title="Modern JavaScript" icon="code">
+    Benefit from the latest technology updates to rapidly prototype and develop your applications with ES6+, TypeScript, and modern bundlers.
+  </Card>
+  
+  <Card title="Real-Time by Default" icon="bolt">
+    Built-in data synchronization keeps your UI automatically in sync with the server through DDP (Distributed Data Protocol).
+  </Card>
+  
+  <Card title="Universal JavaScript" icon="layer-group">
+    Write isomorphic code that runs on both client and server. Share business logic, validation, and data models seamlessly.
+  </Card>
+  
+  <Card title="Integrated Database" icon="database">
+    MongoDB integration out of the box with Minimongo on the client. No separate database setup required for development.
+  </Card>
+</CardGroup>
+
+## Key Features
+
+### Full-Stack Reactivity
+
+Meteor's reactive system automatically propagates data changes from the database to the UI without writing synchronization code.
+
+```javascript
+import { Meteor } from 'meteor/meteor';
+import { Mongo } from 'meteor/mongo';
+
+// Define a collection (works on both client and server)
+export const TasksCollection = new Mongo.Collection('tasks');
+
+// Changes are automatically synchronized
+await TasksCollection.insertAsync({ text: 'New task', completed: false });
+```
+
+### Integrated Build System
+
+Meteor 3.4+ uses Rspack by default for faster builds, Hot Module Replacement (HMR), and better control over bundle size. The platform also includes:
+
+- **Automatic transpilation**: ES6+, TypeScript, JSX support out of the box
+- **Smart bundling**: Code splitting and tree shaking
+- **Development speed**: Fast rebuilds with HMR
+- **Package system**: 140+ official packages for common functionality
+
+### Multiple Frontend Frameworks
+
+Build with your preferred frontend framework:
+
+<CardGroup cols={3}>
+  <Card title="React" icon="react">
+    First-class React support with hooks, Fast Refresh, and react-meteor-data integration.
+  </Card>
+  
+  <Card title="Vue" icon="vuejs">
+    Official Vue 3 support with reactive data bindings and composition API.
+  </Card>
+  
+  <Card title="Blaze" icon="fire">
+    Meteor's own reactive templating engine for simple, powerful UIs.
+  </Card>
+</CardGroup>
+
+<Note>
+  Meteor also supports Svelte, Solid, and other modern frontend frameworks through community packages.
+</Note>
+
+## Built-In Features
+
+### Accounts & Authentication
+
+Comprehensive user authentication system with multiple strategies:
+
+```javascript
+import { Meteor } from 'meteor/meteor';
+import { Accounts } from 'meteor/accounts-base';
+
+// Create a user account
+await Accounts.createUser({
+  username: 'meteorite',
+  password: 'secure-password',
+  email: 'user@example.com'
+});
+
+// Login with password
+Meteor.loginWithPassword(username, password);
+```
+
+Supported authentication methods:
+- Username/password (`accounts-password`)
+- OAuth providers (Google, Facebook, GitHub, Twitter, etc.)
+- Two-factor authentication (`accounts-2fa`)
+- Passwordless authentication (`accounts-passwordless`)
+
+### Publications & Methods
+
+Secure, efficient data transfer with Publications (for data subscriptions) and Methods (for remote procedure calls):
+
+```javascript
+// Server-side publication
+Meteor.publish('tasks', function() {
+  return TasksCollection.find({ userId: this.userId });
+});
+
+// Server-side method
+Meteor.methods({
+  async 'tasks.insert'(text) {
+    return await TasksCollection.insertAsync({
+      text,
+      createdAt: new Date(),
+      userId: this.userId
+    });
+  }
+});
+
+// Client-side usage
+const isLoading = useSubscribe('tasks');
+await Meteor.callAsync('tasks.insert', 'New task');
+```
+
+### Platform Support
+
+Build once, deploy everywhere:
+
+- **Web**: Progressive Web Apps with service workers
+- **Mobile**: iOS and Android via Cordova integration
+- **Desktop**: Electron support for native desktop apps
+- **All platforms**: Shared codebase with platform-specific customizations
+
+## Modern JavaScript Ecosystem
+
+Meteor 3.0+ brings full async/await support and modern Node.js capabilities:
+
+<Tabs>
+  <Tab title="Async/Await">
+    ```javascript
+    // Modern async patterns
+    const tasks = await TasksCollection.find({}).fetchAsync();
+    const result = await Meteor.callAsync('myMethod', arg1, arg2);
+    
+    // Server-side async methods
+    Meteor.methods({
+      async 'processData'(data) {
+        const result = await externalAPI.fetch(data);
+        return await TasksCollection.updateAsync({ _id: data.id }, result);
+      }
+    });
+    ```
+  </Tab>
+  
+  <Tab title="ES Modules">
+    ```javascript
+    // Modern import/export syntax
+    import { Meteor } from 'meteor/meteor';
+    import { TasksCollection } from '/imports/api/TasksCollection';
+    import React from 'react';
+    
+    export const MyComponent = () => {
+      // Component logic
+    };
+    ```
+  </Tab>
+  
+  <Tab title="TypeScript">
+    ```typescript
+    // Full TypeScript support
+    import { Mongo } from 'meteor/mongo';
+    
+    interface Task {
+      _id: string;
+      text: string;
+      completed: boolean;
+      createdAt: Date;
+    }
+    
+    export const TasksCollection = new Mongo.Collection<Task>('tasks');
+    ```
+  </Tab>
+</Tabs>
+
+## Developer Experience
+
+<CardGroup cols={2}>
+  <Card title="Zero Configuration" icon="magic">
+    Start building immediately with sensible defaults. No webpack config, no database setup, no server configuration.
+  </Card>
+  
+  <Card title="Hot Module Replacement" icon="arrows-rotate">
+    See changes instantly without losing application state. Rspack HMR keeps you in flow.
+  </Card>
+  
+  <Card title="Integrated Testing" icon="vial">
+    Built-in test runner with TinyTest for packages and support for Jest, Mocha, and other frameworks.
+  </Card>
+  
+  <Card title="Rich Ecosystem" icon="puzzle-piece">
+    Access 140+ official packages and thousands of npm packages. Atmosphere package repository for Meteor-specific code.
+  </Card>
+</CardGroup>
+
+## Community & Resources
+
+<CardGroup cols={2}>
+  <Card title="Deploy on Galaxy" icon="rocket" href="https://galaxycloud.app">
+    Official cloud hosting platform optimized for Meteor applications.
+  </Card>
+  
+  <Card title="Community Forums" icon="comments" href="https://forums.meteor.com">
+    Get help, share knowledge, and connect with other Meteor developers.
+  </Card>
+  
+  <Card title="Discord Community" icon="discord" href="https://discord.gg/hZkTCaVjmT">
+    Real-time chat with the Meteor community and core team.
+  </Card>
+  
+  <Card title="GitHub Repository" icon="github" href="https://github.com/meteor/meteor">
+    Contribute to Meteor, report issues, and track development.
+  </Card>
+</CardGroup>
+
+## Why Choose Meteor?
+
+<Info>
+  **Rapid Development**: Go from idea to production faster with integrated tools, real-time data, and full-stack JavaScript.
+</Info>
+
+<Info>
+  **Proven at Scale**: Used by thousands of companies worldwide for production applications serving millions of users.
+</Info>
+
+<Info>
+  **Modern Stack**: Stay current with the latest JavaScript features, Node.js versions, and build tools while maintaining simplicity.
+</Info>
+
+## Next Steps
+
+Ready to start building with Meteor?
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install Meteor and set up your development environment in minutes.
+  </Card>
+  
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Build your first Meteor app in under 10 minutes.
+  </Card>
+  
+  <Card title="Tutorial" icon="book" href="/tutorial">
+    Follow our comprehensive tutorial to build a complete To-Do application.
+  </Card>
+  
+  <Card title="API Documentation" icon="code" href="https://docs.meteor.com">
+    Explore the complete Meteor API reference.
+  </Card>
+</CardGroup>

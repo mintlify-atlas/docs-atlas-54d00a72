@@ -1,0 +1,337 @@
+---
+title: Accounts and Authentication
+description: Complete guide to Meteor's user accounts and authentication system
+---
+
+## Overview
+
+Meteor's accounts system provides a secure, full-featured authentication framework built on top of the DDP protocol. The `accounts-base` package forms the foundation, with additional packages adding specific login methods.
+
+## Core Concepts
+
+### userId in DDP
+
+DDP (Distributed Data Protocol) has built-in support for user authentication. Every DDP connection tracks a `userId` field, which is automatically available in:
+
+- **Methods**: Access via `this.userId`
+- **Publications**: Access via `this.userId`
+- **Client**: Access via `Meteor.userId()` and `Meteor.user()`
+
+```javascript
+// In a Meteor Method
+Meteor.methods({
+  'posts.create'(title, content) {
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized');
+    }
+    
+    Posts.insert({
+      title,
+      content,
+      userId: this.userId,
+      createdAt: new Date()
+    });
+  }
+});
+```
+
+### The accounts-base Package
+
+The `accounts-base` package provides:
+
+1. **Users Collection**: Access via `Meteor.users` with a standard schema
+2. **Authentication API**: Methods for login, logout, and user validation
+3. **Login Handler Registration**: API for adding custom authentication methods
+4. **Client Singletons**: `Meteor.userId()` and `Meteor.user()`
+
+<Tip>
+The `accounts-base` package is automatically included when you add any accounts-related package like `accounts-password`.
+</Tip>
+
+## Password Authentication
+
+Add password authentication to your app:
+
+```bash
+meteor add accounts-password
+```
+
+### Creating Users
+
+```javascript
+// Client-side user registration
+Accounts.createUser({
+  username: 'ada',
+  email: 'ada@example.com',
+  password: 'password123',
+  profile: {
+    name: 'Ada Lovelace'
+  }
+}, (error) => {
+  if (error) {
+    console.error('Registration failed:', error.reason);
+  } else {
+    console.log('User created successfully');
+  }
+});
+```
+
+### Validating New Users
+
+Always validate new users on the server:
+
+```javascript
+// Server-side validation
+import SimpleSchema from 'simpl-schema';
+
+Accounts.validateNewUser((user) => {
+  new SimpleSchema({
+    _id: { type: String },
+    emails: { type: Array },
+    'emails.$': { type: Object },
+    'emails.$.address': { type: String },
+    'emails.$.verified': { type: Boolean },
+    createdAt: { type: Date },
+    services: { type: Object, blackbox: true }
+  }).validate(user);
+
+  // Return true to allow user creation
+  return true;
+});
+```
+
+### Case Sensitivity
+
+Meteor handles email/username case-insensitivity automatically. Always use these methods to query users:
+
+```javascript
+// Server-side user lookups
+const user = Accounts.findUserByEmail('ada@example.com');
+const userByName = Accounts.findUserByUsername('ada');
+
+// Never do this:
+// Meteor.users.findOne({ 'emails.address': email }); // ❌
+```
+
+## Email Workflows
+
+### Sending Account Emails
+
+```javascript
+// Server-side only
+Accounts.sendResetPasswordEmail(userId);
+Accounts.sendEnrollmentEmail(userId);
+Accounts.sendVerificationEmail(userId);
+```
+
+### Customizing Email Templates
+
+```javascript
+// Server-side configuration
+Accounts.emailTemplates.siteName = "My Application";
+Accounts.emailTemplates.from = "My App <noreply@example.com>";
+
+Accounts.emailTemplates.resetPassword = {
+  subject(user) {
+    return `Reset your password on ${Accounts.emailTemplates.siteName}`;
+  },
+  text(user, url) {
+    return `Hello ${user.username},\n\nClick the link below to reset your password:\n\n${url}`;
+  }
+};
+```
+
+### Customizing Email URLs
+
+```javascript
+// Server-side: Use hash fragments for security
+Accounts.urls.resetPassword = (token, extraParams) => 
+  Meteor.absoluteUrl(`#/reset-password/${token}`);
+
+Accounts.urls.verifyEmail = (token, extraParams) => 
+  Meteor.absoluteUrl(`#/verify-email/${token}`);
+
+Accounts.urls.enrollAccount = (token, extraParams) => 
+  Meteor.absoluteUrl(`#/enroll-account/${token}`);
+```
+
+### Handling Email Links on the Client
+
+```javascript
+Accounts.onResetPasswordLink((token, done) => {
+  // Show password reset UI
+  const newPassword = prompt('Enter new password:');
+  
+  Accounts.resetPassword(token, newPassword, (err) => {
+    if (err) {
+      alert('Error resetting password: ' + err.reason);
+    } else {
+      alert('Password reset successfully');
+      done(); // Resume normal operation
+    }
+  });
+});
+
+Accounts.onEmailVerificationLink((token, done) => {
+  Accounts.verifyEmail(token, (err) => {
+    if (err) {
+      alert('Verification failed: ' + err.reason);
+    } else {
+      alert('Email verified!');
+      done();
+    }
+  });
+});
+```
+
+## OAuth Providers
+
+Meteor supports multiple OAuth providers:
+
+```bash
+meteor add accounts-google
+meteor add accounts-facebook
+meteor add accounts-github
+meteor add accounts-twitter
+meteor add accounts-meetup
+meteor add accounts-meteor-developer
+```
+
+### Configuring OAuth
+
+```javascript
+// Server-side configuration
+ServiceConfiguration.configurations.upsert(
+  { service: 'google' },
+  {
+    $set: {
+      clientId: 'YOUR_CLIENT_ID',
+      secret: 'YOUR_CLIENT_SECRET'
+    }
+  }
+);
+```
+
+## Account Configuration
+
+```javascript
+// Server-side configuration
+Accounts.config({
+  // Send verification emails
+  sendVerificationEmail: true,
+  
+  // Prevent client-side user creation
+  forbidClientAccountCreation: false,
+  
+  // Login expiration in days
+  loginExpirationInDays: 90,
+  
+  // Password reset token expiration
+  passwordResetTokenExpirationInDays: 3,
+  
+  // Use ambiguous error messages for security
+  ambiguousErrorMessages: true,
+  
+  // BCrypt rounds for password hashing
+  bcryptRounds: 10
+});
+```
+
+## Custom User Data
+
+### Adding Fields to Users
+
+```javascript
+// Server-side: Add custom fields during user creation
+Accounts.onCreateUser((options, user) => {
+  user.profile = options.profile || {};
+  user.role = 'user';
+  user.createdAt = new Date();
+  
+  return user;
+});
+```
+
+### Publishing User Data
+
+```javascript
+// Server-side: Publish additional user fields
+Meteor.publish('userData', function() {
+  if (!this.userId) {
+    return this.ready();
+  }
+  
+  return Meteor.users.find(
+    { _id: this.userId },
+    {
+      fields: {
+        'profile': 1,
+        'emails': 1,
+        'username': 1,
+        'role': 1
+      }
+    }
+  );
+});
+```
+
+## Login Hooks
+
+```javascript
+// Server-side hooks
+Accounts.onLogin((info) => {
+  console.log('User logged in:', info.user._id);
+  console.log('Connection:', info.connection.id);
+});
+
+Accounts.onLoginFailure((info) => {
+  console.log('Login failed for user:', info.user?._id);
+  console.log('Method:', info.methodName);
+});
+
+Accounts.onLogout((info) => {
+  console.log('User logged out:', info.user._id);
+});
+```
+
+## Security Best Practices
+
+<Warning>
+**Never trust client data.** Always validate and check permissions on the server.
+</Warning>
+
+### Rate Limiting Login Attempts
+
+Meteor includes built-in rate limiting for password login to prevent brute-force attacks:
+
+```javascript
+// Server-side: Customize rate limiting
+Accounts.addDefaultRateLimit();
+
+// Or use DDPRateLimiter for custom rules
+import { DDPRateLimiter } from 'meteor/ddp-rate-limiter';
+
+DDPRateLimiter.addRule({
+  type: 'method',
+  name: 'login',
+  connectionId() { return true; }
+}, 5, 1000); // 5 attempts per second
+```
+
+### Securing User Documents
+
+```javascript
+// Server-side: Prevent direct client modifications
+Meteor.users.deny({
+  insert() { return true; },
+  update() { return true; },
+  remove() { return true; }
+});
+```
+
+## Related Resources
+
+- [Methods Guide](/guides/methods) - Learn about Meteor Methods
+- [Security Guide](/guides/security) - Security best practices
+- [Publications Guide](/guides/publications) - Data publishing patterns
+- [Accounts API Reference](https://docs.meteor.com/api/accounts.html) - Official API documentation

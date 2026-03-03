@@ -1,0 +1,420 @@
+---
+title: rspack
+description: Integrate Rspack bundler into the Meteor build lifecycle
+---
+
+The `rspack` package integrates the Rspack bundler into Meteor's build system, providing a modern, fast bundling solution for Meteor applications with support for React, Angular, TypeScript, and more.
+
+## Overview
+
+Rspack is a high-performance JavaScript bundler that runs independently within the Meteor lifecycle. It supports development mode with hot module replacement (HMR) and production builds with optimization.
+
+## Installation
+
+The package automatically installs required dependencies when enabled. Manual installation:
+
+```bash
+meteor npm install --save-dev @rspack/core @rspack/cli
+```
+
+## Configuration
+
+### Entry Points
+
+Rspack requires entry points defined in `package.json`:
+
+```json
+{
+  "meteor": {
+    "mainModule": {
+      "client": "client/main.js",
+      "server": "server/main.js"
+    },
+    "testModule": {
+      "client": "tests/main.client.js",
+      "server": "tests/main.server.js"
+    }
+  }
+}
+```
+
+**Required fields:**
+- `meteor.mainModule.client` - Client-side entry point
+- `meteor.mainModule.server` - Server-side entry point
+
+**Optional fields:**
+- `meteor.testModule.client` - Client test entry
+- `meteor.testModule.server` - Server test entry
+- `meteor.testModule` - Single test file for both client and server
+
+### Rspack Configuration File
+
+Create `rspack.config.js` in your project root. The package provides a default configuration that will be created automatically if missing.
+
+**Basic example:**
+```javascript
+export default {
+  client: {
+    entry: './client/main.js',
+    output: {
+      path: './.rspack/build',
+      filename: 'client.js'
+    }
+  },
+  server: {
+    entry: './server/main.js',
+    output: {
+      path: './.rspack/build',
+      filename: 'server.js'
+    },
+    target: 'node'
+  }
+};
+```
+
+### Meteor Configuration
+
+Configure Rspack behavior in `package.json`:
+
+```json
+{
+  "meteor": {
+    "modern": {
+      "rspack": {
+        "autoInstallDeps": true,
+        "devServerPort": 3100,
+        "verbose": false
+      },
+      "bundleVisualizer": {
+        "enabled": false,
+        "clientPort": 3200,
+        "serverPort": 3201
+      }
+    }
+  }
+}
+```
+
+**Configuration Options:**
+- `autoInstallDeps` - Automatically install Rspack dependencies (default: `true`)
+- `devServerPort` - Dev server port (default: calculated automatically)
+- `verbose` - Enable verbose logging
+- `bundleVisualizer.enabled` - Enable bundle analysis with Rsdoctor
+- `bundleVisualizer.clientPort` - Rsdoctor client port
+- `bundleVisualizer.serverPort` - Rsdoctor server port
+
+## Build Modes
+
+### Development Mode
+
+Run with `meteor run` or `meteor`:
+
+```bash
+meteor
+```
+
+Features:
+- Hot Module Replacement (HMR)
+- Fast rebuilds with watch mode
+- Source maps enabled
+- Dev server for client assets
+- File watching for server code
+
+### Production Mode
+
+Run with `meteor run --production` or `meteor build`:
+
+```bash
+meteor run --production
+meteor build ../output
+```
+
+Features:
+- Minified bundles
+- Optimized code
+- No dev server
+- Watch mode in `run --production`
+- Single build in `meteor build`
+
+### Test Mode
+
+Run tests with Rspack:
+
+```bash
+meteor test --driver-package meteortesting:mocha
+meteor test --full-app
+```
+
+Test modes supported:
+- Unit tests (`meteor test`)
+- Full-app tests (`meteor test --full-app`)
+- Watch mode for continuous testing
+
+## Plugin Architecture
+
+### Main Entry Point
+
+The plugin orchestrates the Rspack integration:
+
+```javascript:packages/rspack/rspack_plugin.js
+if (isMeteorAppRun() || isMeteorAppBuild() || isMeteorAppTest()) {
+  // 1. Ensure dependencies installed
+  await ensureRspackInstalled();
+  
+  // 2. Create build context
+  ensureRspackBuildContextExists();
+  
+  // 3. Configure Meteor
+  configureMeteorForRspack();
+  
+  // 4. Start Rspack processes
+  if (isMeteorAppRun()) {
+    if (isMeteorAppDevelopment()) {
+      startRspackClientServe({ onCompile: onCompileClient });
+      startRspackServerWatch({ onCompile: onCompileServer });
+    }
+  }
+}
+```
+
+### Build Context
+
+Rspack uses a `.rspack` directory for build artifacts:
+
+```
+.rspack/
+├── build/
+│   ├── development/
+│   │   ├── run/
+│   │   │   ├── client.main.js
+│   │   │   └── server.main.js
+│   │   └── build/
+│   └── production/
+└── cache/
+```
+
+### File Ignoring
+
+The package automatically configures `.meteorignore` patterns:
+
+```javascript:packages/rspack/lib/config.js
+const meteorAppIgnores = `${foldersToIgnore.join(' ')} ${filesToIgnore.join(' ')}`;
+setMeteorAppIgnore(meteorAppIgnores);
+```
+
+Ignored by default:
+- `node_modules/**`
+- Non-entrypoint directories
+- Build context folders
+- CSS/HTML files in entry point directories (handled by Rspack)
+
+## Framework Support
+
+### React
+
+Automatically detected and configured:
+
+```javascript:packages/rspack/rspack_plugin.js
+if (checkReactInstalled()) {
+  if (hasMeteorAppConfigAutoInstallDeps()) {
+    await ensureRspackReactInstalled();
+  }
+}
+```
+
+Required packages:
+- `react`
+- `react-dom`
+- `@rspack/plugin-react-refresh` (auto-installed)
+
+### TypeScript
+
+Automatic TypeScript support when detected:
+
+```javascript:packages/rspack/rspack_plugin.js
+checkTypescriptInstalled();
+```
+
+Supported file extensions:
+- `.ts` - TypeScript
+- `.tsx` - TypeScript with JSX
+
+### Angular
+
+Angular support detection:
+
+```javascript:packages/rspack/rspack_plugin.js
+checkAngularInstalled();
+```
+
+## Dev Server
+
+### Port Configuration
+
+Ports are automatically calculated or configured:
+
+```javascript:packages/rspack/rspack_plugin.js
+if (!process.env.RSPACK_DEVSERVER_PORT) {
+  process.env.RSPACK_DEVSERVER_PORT = calculateDevServerPort();
+}
+```
+
+### Proxy Middleware
+
+Client assets are served through a proxy:
+
+```javascript:packages/rspack/rspack_server.js
+// Assets served at /__rspack__/
+WebApp.connectHandlers.use('/__rspack__', proxyMiddleware);
+```
+
+Client bundles accessed via:
+```
+http://localhost:3000/__rspack__/client.main.js
+```
+
+## Bundle Visualization
+
+Enable Rsdoctor for bundle analysis:
+
+```json
+{
+  "meteor": {
+    "modern": {
+      "bundleVisualizer": {
+        "enabled": true
+      }
+    }
+  }
+}
+```
+
+Access the visualizer:
+- Client: `http://localhost:3200`
+- Server: `http://localhost:3201`
+
+## Compilation Tracking
+
+The package tracks first compilation to ensure Meteor waits:
+
+```javascript:packages/rspack/lib/compilation.js
+const setupCompilationTracking = () => {
+  let clientFirstCompile = false;
+  let serverFirstCompile = false;
+  
+  return {
+    clientFirstCompile,
+    serverFirstCompile,
+    onCompileClient: () => { clientFirstCompile = true; },
+    onCompileServer: () => { serverFirstCompile = true; }
+  };
+};
+```
+
+## Environment Variables
+
+- `RSPACK_DEVSERVER_PORT` - Dev server port
+- `RSDOCTOR_CLIENT_PORT` - Rsdoctor client port
+- `RSDOCTOR_SERVER_PORT` - Rsdoctor server port
+- `YARN_ENABLED` - Whether project uses Yarn
+- `METEOR_DISABLE_COLORS` - Disable colored output
+
+## Debugging
+
+Enable verbose logging:
+
+```bash
+meteor run --production
+```
+
+Or in `package.json`:
+```json
+{
+  "meteor": {
+    "modern": {
+      "verbose": true
+    }
+  }
+}
+```
+
+Verbose output shows:
+- Rspack configuration paths
+- Dev server ports
+- Rsdoctor ports
+- NPM/Yarn prefixes
+- Entry points
+- Ignore patterns
+
+## Cleanup
+
+Automatic cleanup on exit:
+
+```javascript:packages/rspack/rspack_plugin.js
+process.on('exit', cleanup);
+process.on('SIGINT', () => {
+  cleanup();
+  process.exit();
+});
+```
+
+## Limitations
+
+- Requires explicit entry points in `package.json`
+- Client and server must have separate entry files
+- `.meteorignore` is automatically modified
+- Legacy browser support requires additional configuration
+- Native mobile builds use production mode
+
+## Example Projects
+
+### React Application
+
+**package.json:**
+```json
+{
+  "meteor": {
+    "mainModule": {
+      "client": "client/main.jsx",
+      "server": "server/main.js"
+    }
+  }
+}
+```
+
+**client/main.jsx:**
+```javascript
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import App from './App';
+
+const root = createRoot(document.getElementById('root'));
+root.render(<App />);
+```
+
+### TypeScript Application
+
+**package.json:**
+```json
+{
+  "meteor": {
+    "mainModule": {
+      "client": "client/main.ts",
+      "server": "server/main.ts"
+    }
+  }
+}
+```
+
+**tsconfig.json:**
+```json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "jsx": "react-jsx",
+    "moduleResolution": "node",
+    "esModuleInterop": true
+  }
+}
+```

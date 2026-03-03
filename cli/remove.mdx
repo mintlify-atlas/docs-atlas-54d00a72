@@ -1,0 +1,130 @@
+---
+title: meteor remove
+description: Remove packages from your Meteor project
+---
+
+The `meteor remove` command removes one or more packages from your Meteor project.
+
+## Usage
+
+```bash
+meteor remove <package> [package...]
+```
+
+## Basic Usage
+
+Remove a single package:
+
+```bash
+meteor remove autopublish
+```
+
+Remove multiple packages:
+
+```bash
+meteor remove autopublish insecure
+```
+
+## Options
+
+<ParamField path="--allow-incompatible-update" type="boolean" default="false">
+  Allow packages in your project to be upgraded or downgraded to versions that are potentially incompatible with the current versions, if required to satisfy all package version constraints.
+</ParamField>
+
+## Examples
+
+Remove default development packages:
+
+```bash
+meteor remove autopublish insecure
+```
+
+Remove a package allowing incompatible updates:
+
+```bash
+meteor remove my-package --allow-incompatible-update
+```
+
+Remove authentication packages:
+
+```bash
+meteor remove accounts-password accounts-ui
+```
+
+## What Happens When You Remove a Package
+
+When you remove a package:
+
+1. The package is removed from `.meteor/packages`
+2. The package and its exclusive dependencies are unloaded
+3. `.meteor/versions` is updated
+4. The app is rebuilt without the package
+
+## Viewing Current Packages
+
+To see which packages are in your project:
+
+```bash
+meteor list
+```
+
+To see all packages including transitive dependencies:
+
+```bash
+meteor list --tree
+```
+
+## Common Packages to Remove
+
+### Development Packages
+
+These should typically be removed before deploying to production:
+
+```bash
+meteor remove autopublish  # Auto-publishes all DB data to clients
+meteor remove insecure     # Allows client-side DB writes
+```
+
+### Switching UI Frameworks
+
+When switching from one UI framework to another:
+
+```bash
+# Remove Blaze
+meteor remove blaze-html-templates
+
+# Remove React
+meteor remove react-meteor-data
+
+# Remove Vue
+meteor remove vue-meteor-tracker
+```
+
+## Dependencies
+
+Removing a package doesn't automatically remove its dependencies if those dependencies are used by other packages in your project.
+
+To see why a package is in your project:
+
+```bash
+meteor list --tree
+```
+
+## Troubleshooting
+
+If removing a package causes version conflicts:
+
+```bash
+# Try allowing incompatible updates
+meteor remove package --allow-incompatible-update
+
+# Or update packages after removal
+meteor remove package
+meteor update
+```
+
+## Related Commands
+
+- [`meteor add`](/cli/add) - Add packages to your project
+- [`meteor list`](/cli/list) - List packages in your project
+- [`meteor update`](/cli/update) - Update packages to newer versions

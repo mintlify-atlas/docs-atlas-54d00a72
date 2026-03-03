@@ -1,0 +1,585 @@
+---
+title: mongo
+description: MongoDB integration and full-stack database driver for Meteor
+---
+
+The `mongo` package provides Meteor's full-stack database driver for MongoDB, enabling real-time data synchronization between client and server through LiveQuery.
+
+## Installation
+
+```bash
+meteor add mongo
+```
+
+<Info>
+The `mongo` package is included by default in Meteor applications.
+</Info>
+
+## Overview
+
+The mongo package provides:
+
+- **Mongo.Collection** - Unified API for client and server database access
+- **LiveQuery** - Real-time updates via MongoDB oplog tailing
+- **Minimongo** - Client-side MongoDB implementation
+- **Cursors** - Reactive database queries
+- **Oplog Observer** - Efficient change detection
+- **DDP Integration** - Automatic data synchronization
+
+## Package Information
+
+- **Version**: 2.2.0
+- **Summary**: Adaptor for using MongoDB and Minimongo over DDP
+- **Dependencies**: `minimongo`, `ddp`, `tracker`, `npm-mongo`
+- **NPM packages**: MongoDB Node.js driver
+
+## Creating Collections
+
+### Basic Collection
+
+```javascript
+// Shared (client and server)
+const Todos = new Mongo.Collection('todos');
+```
+
+### Collection with Options
+
+```javascript
+const Posts = new Mongo.Collection('posts', {
+  // Use MongoDB ObjectID instead of random strings
+  idGeneration: 'MONGO',
+  
+  // Transform documents
+  transform: (doc) => {
+    doc.displayName = `${doc.title} (${doc.author})`;
+    return doc;
+  },
+  
+  // Use a different connection
+  connection: remoteConnection,
+  
+  // Disable client-side mutation methods
+  defineMutationMethods: false
+});
+```
+
+<ParamField path="name" type="string" required>
+  Collection name. Pass `null` for a local (client-only) collection.
+</ParamField>
+
+<ParamField path="options.connection" type="DDP.Connection">
+  Server connection. Uses default if not specified. Pass `null` for local collections.
+</ParamField>
+
+<ParamField path="options.idGeneration" type="string" default="STRING">
+  ID generation method: `'STRING'` for random strings or `'MONGO'` for MongoDB ObjectIDs
+</ParamField>
+
+<ParamField path="options.transform" type="function">
+  Function to transform documents before returning from queries
+</ParamField>
+
+<ParamField path="options.defineMutationMethods" type="boolean" default="true">
+  Whether to define insert/update/remove methods for client use
+</ParamField>
+
+### Local Collections
+
+Client-only collections (not synchronized):
+
+```javascript
+// No synchronization with server
+const LocalCache = new Mongo.Collection(null);
+
+await LocalCache.insertAsync({ temp: 'data' });
+const items = await LocalCache.find().fetchAsync();
+```
+
+## CRUD Operations
+
+### Insert
+
+```javascript
+// Insert a document
+const todoId = await Todos.insertAsync({
+  text: 'Buy groceries',
+  done: false,
+  createdAt: new Date()
+});
+
+console.log('Inserted todo:', todoId);
+```
+
+### Find
+
+```javascript
+// Find all documents
+const allTodos = await Todos.find().fetchAsync();
+
+// Find with selector
+const activeTodos = await Todos.find({
+  done: false
+}).fetchAsync();
+
+// Find with options
+const recentTodos = await Todos.find({}, {
+  sort: { createdAt: -1 },
+  limit: 10,
+  fields: { text: 1, done: 1 } // projection
+}).fetchAsync();
+
+// Find one
+const todo = await Todos.findOneAsync({
+  _id: todoId
+});
+```
+
+### Update
+
+```javascript
+// Update a document
+await Todos.updateAsync(
+  { _id: todoId },
+  { $set: { done: true } }
+);
+
+// Update multiple documents
+const count = await Todos.updateAsync(
+  { done: false },
+  { $set: { priority: 'normal' } },
+  { multi: true }
+);
+
+console.log('Updated', count, 'documents');
+```
+
+### Upsert
+
+```javascript
+// Update or insert
+const result = await Todos.upsertAsync(
+  { userId: currentUserId, type: 'settings' },
+  { $set: { theme: 'dark' } }
+);
+
+if (result.insertedId) {
+  console.log('Inserted:', result.insertedId);
+} else {
+  console.log('Updated:', result.numberAffected);
+}
+```
+
+### Remove
+
+```javascript
+// Remove a document
+await Todos.removeAsync({ _id: todoId });
+
+// Remove multiple
+const count = await Todos.removeAsync({ done: true });
+console.log('Removed', count, 'completed todos');
+```
+
+## Queries and Selectors
+
+### Query Operators
+
+```javascript
+// Comparison operators
+Todos.find({ priority: { $gt: 5 } });
+Todos.find({ priority: { $gte: 5, $lt: 10 } });
+Todos.find({ status: { $in: ['active', 'pending'] } });
+Todos.find({ tags: { $nin: ['archived', 'deleted'] } });
+Todos.find({ deleted: { $ne: true } });
+
+// Logical operators
+Todos.find({
+  $or: [
+    { priority: { $gt: 8 } },
+    { urgent: true }
+  ]
+});
+
+Todos.find({
+  $and: [
+    { done: false },
+    { assignee: currentUserId }
+  ]
+});
+
+// Element operators
+Todos.find({ notes: { $exists: true } });
+Todos.find({ priority: { $type: 'number' } });
+
+// Array operators
+Todos.find({ tags: 'urgent' }); // Has 'urgent' in tags array
+Todos.find({ tags: { $all: ['urgent', 'important'] } });
+Todos.find({ watchers: { $size: 3 } });
+
+// Text search (requires index)
+Todos.find({ $text: { $search: 'groceries milk' } });
+```
+
+### Query Options
+
+```javascript
+Todos.find(selector, {
+  // Projection (fields to include/exclude)
+  fields: { text: 1, done: 1, _id: 0 },
+  
+  // Or use projection key
+  projection: { text: 1, done: 1 },
+  
+  // Sort
+  sort: { createdAt: -1, priority: 1 },
+  
+  // Limit and skip
+  limit: 20,
+  skip: 40,
+  
+  // Transform function
+  transform: (doc) => new TodoModel(doc)
+});
+```
+
+## Cursors
+
+### Reactive Cursors
+
+```javascript
+// Returns a cursor (reactive on client)
+const cursor = Todos.find({ done: false });
+
+// Fetch all documents
+const todos = await cursor.fetchAsync();
+
+// Count documents
+const count = await cursor.countAsync();
+
+// Iterate with forEach
+await cursor.forEachAsync((todo) => {
+  console.log(todo.text);
+});
+
+// Map over documents
+const texts = await cursor.mapAsync((todo) => todo.text);
+```
+
+### Observe Changes
+
+Watch for real-time changes:
+
+```javascript
+const handle = Todos.find({ userId: currentUserId }).observe({
+  added: (document) => {
+    console.log('Added:', document);
+  },
+  
+  changed: (newDocument, oldDocument) => {
+    console.log('Changed:', newDocument._id);
+  },
+  
+  removed: (oldDocument) => {
+    console.log('Removed:', oldDocument._id);
+  }
+});
+
+// Stop observing
+handle.stop();
+```
+
+### Observe Field Changes
+
+Lower-level observer for efficiency:
+
+```javascript
+const handle = Todos.find().observeChanges({
+  added: (id, fields) => {
+    console.log('Added document:', id, fields);
+  },
+  
+  changed: (id, fields) => {
+    console.log('Changed fields:', id, fields);
+  },
+  
+  removed: (id) => {
+    console.log('Removed:', id);
+  }
+});
+```
+
+## Indexes
+
+```javascript
+// Server: Create indexes
+Meteor.startup(async () => {
+  // Simple index
+  await Todos.createIndexAsync({ userId: 1 });
+  
+  // Compound index
+  await Todos.createIndexAsync({ userId: 1, createdAt: -1 });
+  
+  // Unique index
+  await Todos.createIndexAsync(
+    { email: 1 },
+    { unique: true }
+  );
+  
+  // Text index
+  await Todos.createIndexAsync(
+    { text: 'text', description: 'text' },
+    { name: 'TodoTextIndex' }
+  );
+  
+  // TTL index (auto-delete after time)
+  await Todos.createIndexAsync(
+    { createdAt: 1 },
+    { expireAfterSeconds: 86400 } // 24 hours
+  );
+});
+```
+
+## Security with Allow/Deny
+
+<Warning>
+By default, client-side database operations are not allowed. Use allow/deny rules or remove `insecure` package and use Methods.
+</Warning>
+
+### Allow Rules
+
+```javascript
+// Server: Define allow rules
+Todos.allow({
+  insert: function(userId, doc) {
+    // Allow if user is logged in and doc has userId
+    return userId && doc.userId === userId;
+  },
+  
+  update: function(userId, doc, fields, modifier) {
+    // Allow users to update their own todos
+    return userId && doc.userId === userId;
+  },
+  
+  remove: function(userId, doc) {
+    // Allow users to delete their own todos
+    return userId && doc.userId === userId;
+  },
+  
+  fetch: ['userId'] // Fetch only userId for checks
+});
+```
+
+### Deny Rules
+
+```javascript
+// Server: Deny certain operations
+Todos.deny({
+  update: function(userId, doc, fields, modifier) {
+    // Deny changing userId
+    return fields.includes('userId');
+  },
+  
+  remove: function(userId, doc) {
+    // Deny removing locked todos
+    return doc.locked === true;
+  }
+});
+```
+
+### Using Methods Instead
+
+```javascript
+// Server: Define methods (recommended)
+Meteor.methods({
+  'todos.insert': async function(text) {
+    check(text, String);
+    
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized');
+    }
+    
+    return await Todos.insertAsync({
+      text,
+      userId: this.userId,
+      done: false,
+      createdAt: new Date()
+    });
+  }
+});
+
+// Client: Remove insecure package first
+// meteor remove insecure
+
+// Then disable client-side operations
+const Todos = new Mongo.Collection('todos', {
+  defineMutationMethods: false
+});
+```
+
+## Raw MongoDB Access
+
+### Raw Collection
+
+```javascript
+// Server: Access native MongoDB collection
+const rawCollection = Todos.rawCollection();
+
+// Use native MongoDB API
+const result = await rawCollection.aggregate([
+  { $match: { done: false } },
+  { $group: { _id: '$userId', count: { $sum: 1 } } }
+]).toArray();
+```
+
+### Raw Database
+
+```javascript
+// Server: Access native MongoDB database
+const rawDb = Todos.rawDatabase();
+
+// Create collection manually
+const newCollection = await rawDb.createCollection('logs');
+```
+
+### Direct npm Module Access
+
+```javascript
+// Server: Access the npm mongodb module
+const mongodb = MongoInternals.NpmModules.mongodb.module;
+const { ObjectId } = mongodb;
+
+console.log('MongoDB version:', MongoInternals.NpmModules.mongodb.version);
+
+// Use ObjectId
+const id = new ObjectId();
+```
+
+## MongoDB ObjectID
+
+```javascript
+// Use MONGO id generation
+const Items = new Mongo.Collection('items', {
+  idGeneration: 'MONGO'
+});
+
+// IDs will be ObjectID format
+const id = await Items.insertAsync({ name: 'Item' });
+// id looks like: "507f1f77bcf86cd799439011"
+
+// Create ObjectID manually
+const objectId = new Mongo.ObjectID();
+const hexString = objectId.toHexString();
+```
+
+## Transactions (Server)
+
+```javascript
+// Server: Use MongoDB transactions
+const session = Todos.rawDatabase().client.startSession();
+
+try {
+  await session.withTransaction(async () => {
+    await Todos.rawCollection().insertOne(
+      { text: 'First todo', done: false },
+      { session }
+    );
+    
+    await Todos.rawCollection().insertOne(
+      { text: 'Second todo', done: false },
+      { session }
+    );
+    
+    // Both succeed or both fail
+  });
+} finally {
+  await session.endSession();
+}
+```
+
+## LiveQuery and Oplog
+
+<Info>
+Meteor uses MongoDB's oplog (replication log) for efficient real-time updates. This is called LiveQuery.
+</Info>
+
+### Oplog Configuration
+
+```bash
+# Set MONGO_OPLOG_URL environment variable
+export MONGO_OPLOG_URL=mongodb://localhost:27017/local
+```
+
+### Disable Oplog
+
+```javascript
+// Server: Disable oplog for specific queries
+const cursor = Todos.find({}, {
+  disableOplog: true // Fall back to polling
+});
+```
+
+### Polling Observer
+
+When oplog is unavailable, Meteor falls back to polling:
+
+```javascript
+// Polling happens automatically
+// Control polling interval (ms)
+const cursor = Todos.find({}, {
+  pollingIntervalMs: 10000 // Poll every 10 seconds
+});
+```
+
+## Collection Extensions
+
+```javascript
+// Extend all collections
+Mongo.Collection.prototype.findOneOrThrow = async function(selector) {
+  const doc = await this.findOneAsync(selector);
+  if (!doc) {
+    throw new Meteor.Error('not-found', 'Document not found');
+  }
+  return doc;
+};
+
+// Use extension
+const todo = await Todos.findOneOrThrow({ _id: todoId });
+```
+
+## Performance Tips
+
+<Tip>
+**Create appropriate indexes** - Index fields used in queries and sorts
+</Tip>
+
+<Tip>
+**Use projections** - Only fetch fields you need
+</Tip>
+
+<Tip>
+**Limit results** - Use `limit` and `skip` for pagination
+</Tip>
+
+<Tip>
+**Avoid observe** on large datasets - Use publications with `observeChanges` instead
+</Tip>
+
+```javascript
+// Good: Limited query with projection
+const todos = await Todos.find(
+  { userId: currentUserId },
+  {
+    fields: { text: 1, done: 1 },
+    limit: 50,
+    sort: { createdAt: -1 }
+  }
+).fetchAsync();
+
+// Bad: Fetch everything
+const allTodos = await Todos.find().fetchAsync();
+```
+
+## Source Code
+
+- [packages/mongo](https://github.com/meteor/meteor/tree/devel/packages/mongo)
+- [LiveQuery Documentation](https://www.meteor.com/livequery)

@@ -1,0 +1,456 @@
+---
+title: 'Methods'
+description: 'Remote procedure calls (RPC) in Meteor'
+---
+
+# Methods API
+
+Methods are Meteor's remote procedure call (RPC) system, used to save data to the server and get return values.
+
+Source: `packages/ddp-client/`, `packages/ddp-server/`
+
+## Defining Methods
+
+### Meteor.methods()
+
+Defines functions that can be invoked over the network by clients.
+
+**Locus:** Anywhere
+
+<ParamField body="methods" type="object" required>
+  Dictionary of method functions by name.
+</ParamField>
+
+```javascript
+import { Meteor } from 'meteor/meteor';
+import { check } from 'meteor/check';
+
+Meteor.methods({
+  'tasks.insert'(text) {
+    check(text, String);
+    
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized');
+    }
+    
+    return Tasks.insert({
+      text,
+      createdAt: new Date(),
+      owner: this.userId,
+      username: Meteor.users.findOne(this.userId).username
+    });
+  },
+  
+  'tasks.remove'(taskId) {
+    check(taskId, String);
+    
+    const task = Tasks.findOne(taskId);
+    if (task.owner !== this.userId) {
+      throw new Meteor.Error('not-authorized');
+    }
+    
+    Tasks.remove(taskId);
+  },
+  
+  async 'tasks.updateAsync'(taskId, updates) {
+    check(taskId, String);
+    check(updates, Object);
+    
+    const task = await Tasks.findOneAsync(taskId);
+    if (task.owner !== this.userId) {
+      throw new Meteor.Error('not-authorized');
+    }
+    
+    return await Tasks.updateAsync(taskId, { $set: updates });
+  }
+});
+```
+
+## Calling Methods
+
+### Meteor.call()
+
+Invokes a method with a sync stub, passing any number of arguments.
+
+**Locus:** Anywhere
+
+<ParamField body="name" type="string" required>
+  Name of method to invoke
+</ParamField>
+
+<ParamField body="...args" type="any">
+  Optional method arguments
+</ParamField>
+
+<ParamField body="callback" type="function">
+  Optional callback, which is called asynchronously with the error or result after the method is complete.
+</ParamField>
+
+```javascript
+// Client-side call with callback
+Meteor.call('tasks.insert', 'Buy milk', (error, result) => {
+  if (error) {
+    alert('Error: ' + error.reason);
+  } else {
+    console.log('Task created with ID:', result);
+  }
+});
+
+// Server-side synchronous call (deprecated)
+if (Meteor.isServer) {
+  const taskId = Meteor.call('tasks.insert', 'Server task');
+}
+```
+
+### Meteor.callAsync()
+
+Invokes a method with an async stub, passing any number of arguments. Returns a Promise.
+
+**Locus:** Anywhere
+
+<ParamField body="name" type="string" required>
+  Name of method to invoke
+</ParamField>
+
+<ParamField body="...args" type="any">
+  Optional method arguments
+</ParamField>
+
+**Returns:** `Promise`
+
+```javascript
+// Modern async/await syntax
+try {
+  const taskId = await Meteor.callAsync('tasks.insert', 'Buy milk');
+  console.log('Task created:', taskId);
+} catch (error) {
+  console.error('Error:', error);
+}
+
+// Promise syntax
+Meteor.callAsync('tasks.insert', 'Buy milk')
+  .then(taskId => {
+    console.log('Task created:', taskId);
+  })
+  .catch(error => {
+    console.error('Error:', error);
+  });
+```
+
+### Meteor.apply()
+
+Invoke a method passing an array of arguments.
+
+**Locus:** Anywhere
+
+<ParamField body="name" type="string" required>
+  Name of method to invoke
+</ParamField>
+
+<ParamField body="args" type="array" required>
+  Method arguments
+</ParamField>
+
+<ParamField body="options" type="object">
+  Optional options object
+</ParamField>
+
+<ResponseField name="wait" type="boolean">
+  (Client only) If true, don't send this method until all previous method calls have completed.
+</ResponseField>
+
+<ResponseField name="onResultReceived" type="function">
+  (Client only) This callback is invoked with the error or result of the method as soon as the error or result is available.
+</ResponseField>
+
+<ResponseField name="noRetry" type="boolean">
+  (Client only) If true, don't send this method again on reload, simply call the callback an error with the error code 'invocation-failed'.
+</ResponseField>
+
+<ResponseField name="throwStubExceptions" type="boolean">
+  (Client only) If true, exceptions thrown by method stubs will be thrown instead of logged.
+</ResponseField>
+
+<ResponseField name="returnStubValue" type="boolean">
+  (Client only) If true, return the stub's return value instead of undefined.
+</ResponseField>
+
+```javascript
+const args = ['Buy milk', { priority: 'high' }];
+
+Meteor.apply('tasks.insert', args, { 
+  wait: true,
+  onResultReceived(error, result) {
+    console.log('Result received:', result);
+  }
+}, (error, result) => {
+  if (error) {
+    console.error('Method failed:', error);
+  } else {
+    console.log('Method succeeded:', result);
+  }
+});
+```
+
+### Meteor.applyAsync()
+
+Invoke a method passing an array of arguments, returning a Promise.
+
+**Locus:** Anywhere
+
+```javascript
+const args = ['Buy milk', { priority: 'high' }];
+
+try {
+  const result = await Meteor.applyAsync('tasks.insert', args, {
+    wait: true
+  });
+  console.log('Task created:', result);
+} catch (error) {
+  console.error('Failed:', error);
+}
+```
+
+## Method Context (this)
+
+Inside a method function, `this` is bound to a method invocation object with the following properties:
+
+<ResponseField name="userId" type="string">
+  The id of the user that made this method call, or `null` if no user was logged in.
+</ResponseField>
+
+<ResponseField name="connection" type="object">
+  Access to the connection that called this method. `null` for server-initiated methods.
+</ResponseField>
+
+<ResponseField name="isSimulation" type="boolean">
+  `true` if this invocation is a stub on the client, `false` if running on the server.
+</ResponseField>
+
+<ResponseField name="setUserId" type="function">
+  (Server only) Set the logged-in user.
+</ResponseField>
+
+<ResponseField name="unblock" type="function">
+  (Server only) Call this function to allow other methods from the same client to run while this method is still executing.
+</ResponseField>
+
+```javascript
+Meteor.methods({
+  'tasks.insert'(text) {
+    // Check if user is logged in
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized', 
+        'You must be logged in to create tasks');
+    }
+    
+    // On client, this is a simulation
+    if (this.isSimulation) {
+      console.log('Running optimistic update');
+    }
+    
+    // On server, unblock other methods
+    if (Meteor.isServer) {
+      this.unblock();
+    }
+    
+    // Access connection info
+    console.log('Called from connection:', this.connection.id);
+    
+    return Tasks.insert({
+      text,
+      owner: this.userId,
+      createdAt: new Date()
+    });
+  }
+});
+```
+
+## Method Simulation (Latency Compensation)
+
+Methods defined on both client and server run on the client first (simulation/stub), then on the server.
+
+```javascript
+// Shared method definition (in imports/api/)
+Meteor.methods({
+  'tasks.setChecked'(taskId, checked) {
+    check(taskId, String);
+    check(checked, Boolean);
+    
+    const task = Tasks.findOne(taskId);
+    if (task.owner !== this.userId) {
+      throw new Meteor.Error('not-authorized');
+    }
+    
+    // This runs on client first (optimistic update)
+    // Then runs on server (authoritative)
+    Tasks.update(taskId, { $set: { checked } });
+  }
+});
+
+// Client-side call
+Meteor.call('tasks.setChecked', taskId, true);
+// UI updates immediately (simulation)
+// Then server confirms or corrects the update
+```
+
+## Error Handling
+
+### Throwing Errors
+
+```javascript
+Meteor.methods({
+  'tasks.remove'(taskId) {
+    const task = Tasks.findOne(taskId);
+    
+    if (!task) {
+      throw new Meteor.Error('not-found', 
+        'Task not found',
+        'The task you are trying to delete does not exist');
+    }
+    
+    if (task.owner !== this.userId) {
+      throw new Meteor.Error('not-authorized',
+        'You cannot delete this task');
+    }
+    
+    Tasks.remove(taskId);
+  }
+});
+```
+
+### Catching Errors
+
+```javascript
+// With callback
+Meteor.call('tasks.remove', taskId, (error) => {
+  if (error) {
+    if (error.error === 'not-found') {
+      alert('Task not found');
+    } else if (error.error === 'not-authorized') {
+      alert('Not authorized');
+    } else {
+      alert('Error: ' + error.reason);
+    }
+  }
+});
+
+// With async/await
+try {
+  await Meteor.callAsync('tasks.remove', taskId);
+  alert('Task removed');
+} catch (error) {
+  alert('Error: ' + error.reason);
+}
+```
+
+## Validation
+
+Always validate method arguments using the `check` package:
+
+```javascript
+import { check, Match } from 'meteor/check';
+
+Meteor.methods({
+  'tasks.insert'(text, options) {
+    // Validate arguments
+    check(text, String);
+    check(options, Match.Optional({
+      priority: Match.OneOf('low', 'medium', 'high'),
+      tags: Match.Optional([String]),
+      dueDate: Match.Optional(Date)
+    }));
+    
+    // Method implementation
+    return Tasks.insert({ text, ...options });
+  }
+});
+```
+
+## Complete Example
+
+```javascript
+// imports/api/tasks/methods.js
+import { Meteor } from 'meteor/meteor';
+import { check } from 'meteor/check';
+import { Tasks } from './tasks.js';
+
+Meteor.methods({
+  async 'tasks.insert'(text) {
+    check(text, String);
+    
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized');
+    }
+    
+    if (Meteor.isServer) {
+      this.unblock();
+    }
+    
+    return await Tasks.insertAsync({
+      text,
+      createdAt: new Date(),
+      owner: this.userId,
+      checked: false
+    });
+  },
+  
+  async 'tasks.remove'(taskId) {
+    check(taskId, String);
+    
+    const task = await Tasks.findOneAsync(taskId);
+    
+    if (!task) {
+      throw new Meteor.Error('not-found', 'Task not found');
+    }
+    
+    if (task.owner !== this.userId) {
+      throw new Meteor.Error('not-authorized');
+    }
+    
+    await Tasks.removeAsync(taskId);
+  },
+  
+  async 'tasks.setChecked'(taskId, checked) {
+    check(taskId, String);
+    check(checked, Boolean);
+    
+    const task = await Tasks.findOneAsync(taskId);
+    
+    if (task.owner !== this.userId) {
+      throw new Meteor.Error('not-authorized');
+    }
+    
+    await Tasks.updateAsync(taskId, { 
+      $set: { checked } 
+    });
+  }
+});
+
+// Client usage
+import './imports/api/tasks/methods.js';
+
+Template.task.events({
+  async 'click .toggle-checked'() {
+    try {
+      await Meteor.callAsync(
+        'tasks.setChecked',
+        this._id,
+        !this.checked
+      );
+    } catch (error) {
+      alert('Error: ' + error.reason);
+    }
+  },
+  
+  async 'click .delete'() {
+    if (confirm('Delete this task?')) {
+      try {
+        await Meteor.callAsync('tasks.remove', this._id);
+      } catch (error) {
+        alert('Error: ' + error.reason);
+      }
+    }
+  }
+});
+```

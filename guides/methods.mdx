@@ -1,0 +1,427 @@
+---
+title: Meteor Methods
+description: Remote procedure calls for client-server communication
+---
+
+## Overview
+
+Meteor Methods are the framework's remote procedure call (RPC) system. They provide a secure way to send data from clients to the server, perform operations, and return results. Methods integrate tightly with Meteor's data system to enable Optimistic UI.
+
+<Info>
+Think of Methods as POST requests to your server, but with automatic client-side simulation, latency compensation, and built-in security features.
+</Info>
+
+## What is a Method?
+
+A Method is:
+- **An API endpoint** that can be called from client or server
+- **Defined once** in code shared between client and server
+- **Automatically simulated** on the client for instant UI updates
+- **Re-run on the server** for validation and persistence
+
+## Defining Methods
+
+### Basic Method Definition
+
+```javascript
+import { Meteor } from 'meteor/meteor';
+import SimpleSchema from 'simpl-schema';
+import { Todos } from '/imports/api/todos';
+
+Meteor.methods({
+  'todos.insert'(text, listId) {
+    // Validate arguments
+    new SimpleSchema({
+      text: { type: String },
+      listId: { type: String }
+    }).validate({ text, listId });
+    
+    // Check authentication
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized');
+    }
+    
+    // Perform the operation
+    return Todos.insert({
+      text,
+      listId,
+      checked: false,
+      createdAt: new Date(),
+      userId: this.userId
+    });
+  }
+});
+```
+
+### Using jam:method Package
+
+For a more structured approach, use the `jam:method` package:
+
+```javascript
+import { createMethod } from 'meteor/jam:method';
+
+export const insertTodo = createMethod({
+  name: 'todos.insert',
+  schema: new SimpleSchema({
+    text: { type: String },
+    listId: { type: String }
+  }),
+  async run({ text, listId }) {
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized');
+    }
+    
+    return await Todos.insertAsync({
+      text,
+      listId,
+      checked: false,
+      createdAt: new Date(),
+      userId: this.userId
+    });
+  }
+});
+```
+
+## Calling Methods
+
+### From the Client
+
+```javascript
+// Using Meteor.call
+Meteor.call('todos.insert', 'Buy groceries', listId, (error, result) => {
+  if (error) {
+    alert('Error: ' + error.reason);
+  } else {
+    console.log('Todo created with ID:', result);
+  }
+});
+
+// With jam:method
+import { insertTodo } from '/imports/api/todos/methods';
+
+insertTodo.call({ text: 'Buy groceries', listId }, (error, result) => {
+  if (error) {
+    alert('Error: ' + error.reason);
+  } else {
+    console.log('Todo created with ID:', result);
+  }
+});
+```
+
+### Using Promises
+
+```javascript
+try {
+  const todoId = await Meteor.callAsync('todos.insert', 'Buy groceries', listId);
+  console.log('Created todo:', todoId);
+} catch (error) {
+  console.error('Error creating todo:', error.reason);
+}
+```
+
+### From the Server
+
+```javascript
+// Server-to-server calls are synchronous by default
+const todoId = Meteor.call('todos.insert', 'Buy groceries', listId);
+
+// Or use async version
+const todoId = await Meteor.callAsync('todos.insert', 'Buy groceries', listId);
+```
+
+## Method Context (this)
+
+Inside a Method, `this` provides:
+
+```javascript
+Meteor.methods({
+  'example.method'() {
+    // Current user ID (null if not logged in)
+    console.log(this.userId);
+    
+    // Unique ID for this method invocation
+    console.log(this.invocation.id);
+    
+    // True if running on client (simulation)
+    console.log(this.isSimulation);
+    
+    // Connection information
+    console.log(this.connection.id);
+    console.log(this.connection.clientAddress);
+    
+    // Unblock other methods from running
+    this.unblock();
+    
+    // Set a different user ID (server only)
+    this.setUserId(someUserId);
+  }
+});
+```
+
+## Optimistic UI
+
+Methods run twice:
+1. **Client simulation** - Immediate UI update
+2. **Server execution** - Validation and persistence
+
+```javascript
+Meteor.methods({
+  'todos.setChecked'(todoId, checked) {
+    check(todoId, String);
+    check(checked, Boolean);
+    
+    const todo = Todos.findOne(todoId);
+    
+    if (this.isSimulation) {
+      // Client simulation - fast, optimistic
+      console.log('Running on client');
+    } else {
+      // Server execution - authoritative
+      console.log('Running on server');
+      
+      // Security checks only on server
+      if (todo.userId !== this.userId) {
+        throw new Meteor.Error('not-authorized');
+      }
+    }
+    
+    Todos.update(todoId, { $set: { checked } });
+  }
+});
+```
+
+## Error Handling
+
+### Throwing Errors
+
+```javascript
+Meteor.methods({
+  'todos.remove'(todoId) {
+    const todo = Todos.findOne(todoId);
+    
+    if (!todo) {
+      throw new Meteor.Error('not-found', 'Todo not found');
+    }
+    
+    if (todo.userId !== this.userId) {
+      throw new Meteor.Error(
+        'not-authorized',
+        'You are not authorized to delete this todo',
+        // Optional details object
+        { todoId, userId: this.userId }
+      );
+    }
+    
+    Todos.remove(todoId);
+  }
+});
+```
+
+### Handling Errors
+
+```javascript
+Meteor.call('todos.remove', todoId, (error) => {
+  if (error) {
+    console.error('Error:', error.error);    // 'not-authorized'
+    console.error('Reason:', error.reason);  // Human-readable message
+    console.error('Details:', error.details); // Optional details object
+  }
+});
+```
+
+## Validation
+
+### Using check()
+
+```javascript
+import { check, Match } from 'meteor/check';
+
+Meteor.methods({
+  'todos.update'(todoId, updates) {
+    check(todoId, String);
+    check(updates, {
+      text: Match.Optional(String),
+      checked: Match.Optional(Boolean)
+    });
+    
+    // Method implementation
+  }
+});
+```
+
+### Using SimpleSchema
+
+```javascript
+import SimpleSchema from 'simpl-schema';
+
+Meteor.methods({
+  'todos.insert'(data) {
+    new SimpleSchema({
+      text: { type: String, min: 1, max: 200 },
+      listId: { type: String },
+      priority: { type: String, allowedValues: ['low', 'medium', 'high'] },
+      dueDate: { type: Date, optional: true }
+    }).validate(data);
+    
+    // Data is now validated
+  }
+});
+```
+
+## Security Best Practices
+
+### Never Trust this.userId from Client
+
+```javascript
+// ❌ Bad: Client could pass any userId
+'setUserName'({ userId, name }) {
+  Meteor.users.update(userId, { $set: { name } });
+}
+
+// ✅ Good: Use this.userId from DDP
+'setUserName'({ name }) {
+  if (!this.userId) {
+    throw new Meteor.Error('not-authorized');
+  }
+  Meteor.users.update(this.userId, { $set: { name } });
+}
+```
+
+### One Method Per Action
+
+```javascript
+// ✅ Good: Specific, testable methods
+Meteor.methods({
+  'lists.makePrivate'(listId) { /* ... */ },
+  'lists.makePublic'(listId) { /* ... */ }
+});
+
+// ❌ Bad: Too generic, hard to secure
+Meteor.methods({
+  'lists.setPrivacy'(listId, isPrivate) { /* ... */ }
+});
+```
+
+### Rate Limiting
+
+```javascript
+import { DDPRateLimiter } from 'meteor/ddp-rate-limiter';
+
+const METHODS = [
+  'todos.insert',
+  'todos.update',
+  'todos.remove'
+];
+
+if (Meteor.isServer) {
+  DDPRateLimiter.addRule({
+    name(name) {
+      return METHODS.includes(name);
+    },
+    connectionId() { return true; }
+  }, 5, 1000); // 5 calls per second per connection
+}
+```
+
+## Advanced Patterns
+
+### Unblocking Methods
+
+```javascript
+Meteor.methods({
+  async 'longRunningTask'() {
+    // Allow other methods to run
+    this.unblock();
+    
+    // Perform long operation
+    const result = await someAsyncOperation();
+    return result;
+  }
+});
+```
+
+### Simulation Control
+
+```javascript
+Meteor.methods({
+  'admin.deleteEverything'() {
+    // Don't simulate on client
+    if (this.isSimulation) {
+      return;
+    }
+    
+    // Server-only operation
+    if (!Roles.userIsInRole(this.userId, 'admin')) {
+      throw new Meteor.Error('not-authorized');
+    }
+    
+    // Dangerous operation
+    Todos.remove({});
+  }
+});
+```
+
+### Method Chaining
+
+```javascript
+const createMethod = createMethod({
+  name: 'todos.createWithNotification',
+  schema: TodoSchema,
+  async run(todoData) {
+    // Call another method
+    const todoId = await this.call('todos.insert', todoData);
+    
+    // Send notification
+    await this.call('notifications.send', {
+      userId: this.userId,
+      message: 'Todo created'
+    });
+    
+    return todoId;
+  }
+});
+```
+
+## Testing Methods
+
+```javascript
+import { assert } from 'chai';
+import { Meteor } from 'meteor/meteor';
+import { resetDatabase } from 'meteor/xolvio:cleaner';
+import { insertTodo } from './methods';
+
+if (Meteor.isServer) {
+  describe('todos.insert', function() {
+    beforeEach(function() {
+      resetDatabase();
+    });
+    
+    it('creates a todo', function() {
+      const todoId = insertTodo.run.call(
+        { userId: 'testUser' },
+        { text: 'Test todo', listId: 'testList' }
+      );
+      
+      assert.isString(todoId);
+      const todo = Todos.findOne(todoId);
+      assert.equal(todo.text, 'Test todo');
+    });
+    
+    it('requires authentication', function() {
+      assert.throws(() => {
+        insertTodo.run.call(
+          { userId: null },
+          { text: 'Test todo', listId: 'testList' }
+        );
+      }, /not-authorized/);
+    });
+  });
+}
+```
+
+## Related Resources
+
+- [Methods API Reference](https://docs.meteor.com/api/methods.html)
+- [Security Guide](/guides/security)
+- [Accounts Guide](/guides/accounts)
+- [Testing Guide](/guides/testing)

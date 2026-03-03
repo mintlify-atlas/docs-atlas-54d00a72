@@ -1,0 +1,573 @@
+---
+title: Security Best Practices
+description: Essential security guidelines for Meteor applications
+---
+
+## Overview
+
+Security in Meteor follows a simple principle: **trust the server, validate everything from the client**. Understanding the attack surface and implementing proper security measures is critical for any production application.
+
+## Security Domains
+
+In a Meteor application, there are two security domains:
+
+1. **Server**: Trusted environment where code runs securely
+2. **Client**: Untrusted environment that can be manipulated
+
+<Warning>
+Never trust data coming from the client. Always validate and authorize on the server.
+</Warning>
+
+## Attack Surface
+
+Secure these three main entry points:
+
+### 1. Methods
+Any data through Method arguments needs validation:
+
+```javascript
+Meteor.methods({
+  'posts.create'(title, content) {
+    // ✅ Validate all arguments
+    check(title, String);
+    check(content, String);
+    
+    // ✅ Check authorization
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized');
+    }
+    
+    // ✅ Additional business logic validation
+    if (title.length < 3 || title.length > 100) {
+      throw new Meteor.Error('invalid-title');
+    }
+    
+    Posts.insert({ title, content, userId: this.userId });
+  }
+});
+```
+
+### 2. Publications
+Publications must not return unauthorized data:
+
+```javascript
+Meteor.publish('posts.private', function() {
+  // ✅ Verify user is logged in
+  if (!this.userId) {
+    return this.ready();
+  }
+  
+  // ✅ Only return user's own posts
+  return Posts.find(
+    { userId: this.userId },
+    { 
+      fields: { 
+        title: 1, 
+        content: 1,
+        // Don't publish sensitive fields
+        // apiKey: 0,
+        // privateData: 0
+      } 
+    }
+  );
+});
+```
+
+### 3. Served Files
+Ensure no secrets in client-accessible code:
+
+```javascript
+// ❌ Never do this - API keys exposed to client
+const API_KEY = 'secret-key-12345';
+
+// ✅ Use environment variables on server only
+if (Meteor.isServer) {
+  const API_KEY = process.env.API_KEY;
+}
+```
+
+## Remove Insecure Packages
+
+<Warning>
+Remove `insecure` and `autopublish` packages immediately in any production app.
+</Warning>
+
+```bash
+# Remove insecure packages
+meteor remove insecure
+meteor remove autopublish
+```
+
+## Disable Allow/Deny
+
+Avoid client-side database operations:
+
+```javascript
+// ❌ Never use allow/deny - too complex to secure
+Posts.allow({
+  insert(userId, doc) {
+    return userId && doc.userId === userId;
+  },
+  update(userId, doc) {
+    return userId && doc.userId === userId;
+  }
+});
+
+// ✅ Instead, deny all client operations
+Posts.deny({
+  insert() { return true; },
+  update() { return true; },
+  remove() { return true; }
+});
+
+// ✅ Use Methods for all data modifications
+Meteor.methods({
+  'posts.insert'(data) {
+    // Server-side validation and insertion
+  }
+});
+```
+
+## Validating Method Arguments
+
+### Using check()
+
+```javascript
+import { check, Match } from 'meteor/check';
+
+Meteor.methods({
+  'posts.update'(postId, updates) {
+    // Validate argument types
+    check(postId, String);
+    check(updates, {
+      title: Match.Optional(String),
+      content: Match.Optional(String),
+      published: Match.Optional(Boolean)
+    });
+    
+    // Validation passed, proceed with logic
+  }
+});
+```
+
+### Using SimpleSchema
+
+```javascript
+import SimpleSchema from 'simpl-schema';
+
+Meteor.methods({
+  'posts.insert'(data) {
+    // Comprehensive validation
+    new SimpleSchema({
+      title: {
+        type: String,
+        min: 3,
+        max: 100
+      },
+      content: {
+        type: String,
+        min: 10,
+        max: 10000
+      },
+      tags: {
+        type: Array,
+        optional: true,
+        maxCount: 5
+      },
+      'tags.$': {
+        type: String
+      },
+      publishedAt: {
+        type: Date,
+        optional: true
+      }
+    }).validate(data);
+    
+    // Data is validated, proceed
+  }
+});
+```
+
+## Never Trust this.userId from Client
+
+```javascript
+// ❌ BAD: Client can pass any userId
+Meteor.methods({
+  'users.setName'({ userId, name }) {
+    Meteor.users.update(userId, { $set: { name } });
+  }
+});
+
+// ✅ GOOD: Use this.userId from DDP
+Meteor.methods({
+  'users.setName'({ name }) {
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized');
+    }
+    
+    Meteor.users.update(this.userId, { $set: { name } });
+  }
+});
+```
+
+## Authorization Patterns
+
+### Check Ownership
+
+```javascript
+Meteor.methods({
+  'posts.remove'(postId) {
+    check(postId, String);
+    
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized');
+    }
+    
+    const post = Posts.findOne(postId);
+    
+    if (!post) {
+      throw new Meteor.Error('not-found');
+    }
+    
+    // Check if user owns the post
+    if (post.userId !== this.userId) {
+      throw new Meteor.Error('not-authorized');
+    }
+    
+    Posts.remove(postId);
+  }
+});
+```
+
+### Role-Based Access Control
+
+```bash
+meteor add alanning:roles
+```
+
+```javascript
+import { Roles } from 'meteor/alanning:roles';
+
+Meteor.methods({
+  'users.delete'(userId) {
+    check(userId, String);
+    
+    // Check if current user is admin
+    if (!Roles.userIsInRole(this.userId, 'admin')) {
+      throw new Meteor.Error('not-authorized');
+    }
+    
+    // Admin can delete users
+    Meteor.users.remove(userId);
+  }
+});
+
+// Assign roles
+Roles.addUsersToRoles(userId, ['admin'], Roles.GLOBAL_GROUP);
+
+// Check roles
+if (Roles.userIsInRole(userId, 'admin')) {
+  // User is admin
+}
+```
+
+## Rate Limiting
+
+Protect against brute force and spam:
+
+```javascript
+import { DDPRateLimiter } from 'meteor/ddp-rate-limiter';
+import { Accounts } from 'meteor/accounts-base';
+
+// Rate limit login attempts
+Accounts.addDefaultRateLimit();
+
+// Custom rate limiting for Methods
+const SENSITIVE_METHODS = [
+  'posts.create',
+  'posts.update',
+  'posts.remove',
+  'comments.create'
+];
+
+if (Meteor.isServer) {
+  DDPRateLimiter.addRule({
+    type: 'method',
+    name(name) {
+      return SENSITIVE_METHODS.includes(name);
+    },
+    connectionId() { 
+      return true; 
+    }
+  }, 5, 1000); // 5 calls per second per connection
+  
+  // Rate limit by user ID
+  DDPRateLimiter.addRule({
+    type: 'method',
+    name: 'posts.create',
+    userId(userId) { 
+      return !!userId; 
+    }
+  }, 10, 60000); // 10 posts per minute per user
+}
+```
+
+## Securing Publications
+
+### Field Filtering
+
+```javascript
+// ✅ Only publish safe fields
+Meteor.publish('users.profile', function(userId) {
+  check(userId, String);
+  
+  return Meteor.users.find(
+    { _id: userId },
+    {
+      fields: {
+        username: 1,
+        'profile.name': 1,
+        'profile.avatar': 1,
+        // NEVER publish:
+        // services: 0,        // OAuth tokens
+        // 'services.password': 0,  // Password hashes
+        // emails: 0,         // Unless necessary
+        // apiKeys: 0         // API credentials
+      }
+    }
+  );
+});
+```
+
+### Validate Publication Arguments
+
+```javascript
+import { check } from 'meteor/check';
+
+Meteor.publish('posts.byCategory', function(category, limit) {
+  // Validate arguments
+  check(category, String);
+  check(limit, Number);
+  
+  // Enforce maximum limit
+  limit = Math.min(limit, 100);
+  
+  return Posts.find(
+    { category },
+    { limit, sort: { createdAt: -1 } }
+  );
+});
+```
+
+### Check User Permissions
+
+```javascript
+Meteor.publish('admin.statistics', function() {
+  if (!Roles.userIsInRole(this.userId, 'admin')) {
+    // Return nothing for non-admins
+    return this.ready();
+  }
+  
+  return Statistics.find();
+});
+```
+
+## Secrets Management
+
+### Environment Variables
+
+```javascript
+// settings.json (excluded from version control)
+{
+  "private": {
+    "MAIL_URL": "smtp://username:password@smtp.example.com:587",
+    "AWS_ACCESS_KEY": "AKIAIOSFODNN7EXAMPLE",
+    "AWS_SECRET_KEY": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+  },
+  "public": {
+    "APP_NAME": "My App"
+  }
+}
+```
+
+```bash
+# Run with settings
+meteor --settings settings.json
+```
+
+```javascript
+// Access in code
+if (Meteor.isServer) {
+  // Server-only secrets
+  const awsKey = Meteor.settings.private.AWS_ACCESS_KEY;
+  
+  // Or use process.env
+  const mailUrl = process.env.MAIL_URL;
+}
+
+if (Meteor.isClient) {
+  // Public settings available on client
+  const appName = Meteor.settings.public.APP_NAME;
+}
+```
+
+### Never Commit Secrets
+
+```bash
+# .gitignore
+settings.json
+settings-*.json
+.env
+*.env
+```
+
+## Input Sanitization
+
+### Prevent XSS (Cross-Site Scripting)
+
+```javascript
+import { check } from 'meteor/check';
+
+Meteor.methods({
+  'comments.create'(postId, text) {
+    check(postId, String);
+    check(text, String);
+    
+    // Meteor's templating automatically escapes HTML
+    // But be careful with raw HTML or dangerouslySetInnerHTML
+    
+    Comments.insert({
+      postId,
+      text, // Will be escaped in templates
+      userId: this.userId,
+      createdAt: new Date()
+    });
+  }
+});
+```
+
+```html
+<!-- ✅ Safe: Blaze automatically escapes -->
+<div>{{comment.text}}</div>
+
+<!-- ❌ Dangerous: Raw HTML -->
+<div>{{{comment.text}}}</div>
+
+<!-- ✅ Use sanitization library if needed -->
+<div>{{sanitizeHtml comment.text}}</div>
+```
+
+### Prevent NoSQL Injection
+
+```javascript
+// ❌ BAD: Allows MongoDB operators
+Meteor.methods({
+  'posts.findByTitle'(title) {
+    return Posts.find({ title }); // Client could pass { $ne: null }
+  }
+});
+
+// ✅ GOOD: Validate type
+Meteor.methods({
+  'posts.findByTitle'(title) {
+    check(title, String); // Ensures it's a string
+    return Posts.find({ title });
+  }
+});
+```
+
+## HTTPS/SSL
+
+<Warning>
+Always use HTTPS in production to encrypt data in transit.
+</Warning>
+
+```javascript
+// Force SSL in production
+if (Meteor.isProduction) {
+  // Redirect HTTP to HTTPS
+  WebApp.connectHandlers.use(function(req, res, next) {
+    if (req.headers['x-forwarded-proto'] !== 'https') {
+      res.writeHead(301, {
+        Location: 'https://' + req.headers.host + req.url
+      });
+      res.end();
+      return;
+    }
+    next();
+  });
+}
+```
+
+## Content Security Policy
+
+```javascript
+import { BrowserPolicy } from 'meteor/browser-policy-common';
+
+if (Meteor.isServer) {
+  // Disable inline scripts
+  BrowserPolicy.content.disallowInlineScripts();
+  
+  // Allow specific domains
+  BrowserPolicy.content.allowScriptOrigin('https://cdn.example.com');
+  BrowserPolicy.content.allowImageOrigin('https://images.example.com');
+  
+  // Allow self
+  BrowserPolicy.content.allowScriptOrigin("'self'");
+  BrowserPolicy.content.allowStyleOrigin("'self'");
+}
+```
+
+## Security Checklist
+
+<Steps>
+  <Step title="Remove insecure packages">
+    ```bash
+    meteor remove insecure autopublish
+    ```
+  </Step>
+  
+  <Step title="Validate all Method arguments">
+    Use `check()` or SimpleSchema for every Method
+  </Step>
+  
+  <Step title="Disable client-side database operations">
+    Use `deny()` rules on all collections
+  </Step>
+  
+  <Step title="Filter publication fields">
+    Never publish sensitive user data or credentials
+  </Step>
+  
+  <Step title="Implement rate limiting">
+    Protect against brute force and spam
+  </Step>
+  
+  <Step title="Use HTTPS in production">
+    Encrypt all data in transit
+  </Step>
+  
+  <Step title="Manage secrets properly">
+    Use environment variables, never commit secrets
+  </Step>
+  
+  <Step title="Implement authorization">
+    Check ownership and roles before operations
+  </Step>
+  
+  <Step title="Enable audit logging">
+    Log security-relevant actions
+  </Step>
+  
+  <Step title="Keep dependencies updated">
+    Regularly update Meteor and npm packages
+  </Step>
+</Steps>
+
+## Related Resources
+
+- [Meteor Security Guide](https://guide.meteor.com/security.html)
+- [Methods Guide](/guides/methods)
+- [Publications Guide](/guides/publications)
+- [Accounts Guide](/guides/accounts)
+- [OWASP Top 10](https://owasp.org/www-project-top-ten/)

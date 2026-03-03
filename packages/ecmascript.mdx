@@ -1,0 +1,544 @@
+---
+title: ECMAScript
+description: ES2015+ JavaScript compiler for Meteor
+---
+
+The `ecmascript` package provides ES2015+ (ES6 and beyond) JavaScript support in Meteor applications through Babel compilation.
+
+## Installation
+
+```bash
+meteor add ecmascript
+```
+
+<Info>
+The `ecmascript` package is included by default in all Meteor applications.
+</Info>
+
+## Overview
+
+The ecmascript package provides:
+
+- **ES2015+ Support** - Arrow functions, classes, async/await, and more
+- **Babel Compilation** - Automatic transpilation to browser-compatible code
+- **Modern JavaScript** - Use the latest language features
+- **Module System** - ES6 import/export statements
+- **React Fast Refresh** - Hot reloading for React components
+- **Source Maps** - Debug original source code
+
+## Package Information
+
+- **Version**: 0.17.0
+- **Summary**: Compiler plugin that supports ES2015+ in all .js files
+- **Dependencies**: `babel-compiler`, `babel-runtime`, `modules`, `promise`, `dynamic-import`
+- **NPM**: `@babel/runtime@7.20.7`
+
+## Supported Features
+
+### ES2015 (ES6)
+
+```javascript
+// Arrow functions
+const square = (x) => x * x;
+
+// Template literals
+const message = `Hello, ${name}!`;
+
+// Destructuring
+const { firstName, lastName } = user;
+const [first, second, ...rest] = array;
+
+// Default parameters
+function greet(name = 'World') {
+  return `Hello, ${name}!`;
+}
+
+// Rest parameters
+function sum(...numbers) {
+  return numbers.reduce((a, b) => a + b, 0);
+}
+
+// Spread operator
+const merged = { ...obj1, ...obj2 };
+const combined = [...array1, ...array2];
+
+// Object shorthand
+const name = 'Alice';
+const age = 30;
+const user = { name, age };
+
+// Computed property names
+const key = 'dynamicKey';
+const obj = {
+  [key]: 'value',
+  [`${key}2`]: 'value2'
+};
+
+// Classes
+class Person {
+  constructor(name) {
+    this.name = name;
+  }
+  
+  greet() {
+    return `Hello, I'm ${this.name}`;
+  }
+}
+
+// Class inheritance
+class Employee extends Person {
+  constructor(name, role) {
+    super(name);
+    this.role = role;
+  }
+}
+
+// Let and const
+let mutable = 1;
+const immutable = 2;
+
+// for...of loops
+for (const item of array) {
+  console.log(item);
+}
+
+// Map and Set
+const map = new Map();
+const set = new Set();
+
+// Promises
+const promise = new Promise((resolve, reject) => {
+  // async operation
+});
+```
+
+### ES2016+
+
+```javascript
+// Exponentiation operator (ES2016)
+const squared = 2 ** 8; // 256
+
+// Array.includes() (ES2016)
+if (array.includes(item)) { }
+
+// Async/await (ES2017)
+async function fetchData() {
+  const result = await Meteor.callAsync('getData');
+  return result;
+}
+
+// Object rest/spread (ES2018)
+const { a, b, ...rest } = object;
+const merged = { ...obj1, ...obj2 };
+
+// Optional chaining (ES2020)
+const value = obj?.property?.nested;
+
+// Nullish coalescing (ES2020)
+const result = value ?? defaultValue;
+
+// Logical assignment (ES2021)
+obj.prop ??= 'default';
+obj.prop ||= 'default';
+obj.prop &&= 'value';
+
+// Numeric separators (ES2021)
+const billion = 1_000_000_000;
+```
+
+## Module System
+
+### Import Statements
+
+```javascript
+// Named imports
+import { Meteor } from 'meteor/meteor';
+import { Mongo } from 'meteor/mongo';
+import { check, Match } from 'meteor/check';
+
+// Default import
+import React from 'react';
+import express from 'express';
+
+// Namespace import
+import * as Collections from './collections';
+
+// Rename imports
+import { longFunctionName as shortName } from './utils';
+
+// Import for side effects
+import './startup/client';
+import 'bootstrap/dist/css/bootstrap.css';
+
+// Dynamic imports
+const module = await import('./module.js');
+```
+
+### Export Statements
+
+```javascript
+// Named exports
+export const PI = 3.14159;
+export function calculate() { }
+export class MyClass { }
+
+// Default export
+export default function main() { }
+
+// Re-exporting
+export { something } from './other';
+export * from './module';
+
+// Export list
+const a = 1;
+const b = 2;
+export { a, b };
+```
+
+## Async/Await
+
+### With Meteor Methods
+
+```javascript
+// Call methods with async/await
+async function createTodo(text) {
+  try {
+    const todoId = await Meteor.callAsync('todos.insert', text);
+    console.log('Created:', todoId);
+    return todoId;
+  } catch (error) {
+    console.error('Failed:', error);
+    throw error;
+  }
+}
+
+// In Meteor methods
+Meteor.methods({
+  async 'todos.insert'(text) {
+    check(text, String);
+    
+    // Async database operations
+    const todoId = await Todos.insertAsync({
+      text,
+      createdAt: new Date()
+    });
+    
+    return todoId;
+  }
+});
+```
+
+### With Collections
+
+```javascript
+// All collection methods have async versions
+async function getUserTodos(userId) {
+  // Find and fetch
+  const todos = await Todos.find({ userId }).fetchAsync();
+  
+  // Find one
+  const todo = await Todos.findOneAsync({ _id: todoId });
+  
+  // Insert
+  const id = await Todos.insertAsync({ text: 'New todo' });
+  
+  // Update
+  const count = await Todos.updateAsync(
+    { _id: id },
+    { $set: { done: true } }
+  );
+  
+  // Remove
+  await Todos.removeAsync({ _id: id });
+  
+  return todos;
+}
+```
+
+### Parallel Operations
+
+```javascript
+// Run operations in parallel
+async function loadData() {
+  const [users, posts, comments] = await Promise.all([
+    Users.find().fetchAsync(),
+    Posts.find().fetchAsync(),
+    Comments.find().fetchAsync()
+  ]);
+  
+  return { users, posts, comments };
+}
+```
+
+## Class Properties
+
+```javascript
+// Class fields
+class Counter {
+  // Public field
+  count = 0;
+  
+  // Private field
+  #privateData = 'secret';
+  
+  // Method
+  increment() {
+    this.count++;
+  }
+  
+  // Arrow function as method (auto-bound)
+  handleClick = () => {
+    this.increment();
+  };
+}
+
+// Static properties
+class MathUtils {
+  static PI = 3.14159;
+  
+  static calculateCircumference(radius) {
+    return 2 * MathUtils.PI * radius;
+  }
+}
+```
+
+## React Support
+
+ECMAScript package includes React Fast Refresh:
+
+```javascript
+import React, { useState } from 'react';
+
+export default function Counter() {
+  const [count, setCount] = useState(0);
+  
+  return (
+    <div>
+      <p>Count: {count}</p>
+      <button onClick={() => setCount(count + 1)}>
+        Increment
+      </button>
+    </div>
+  );
+}
+
+// Changes to this component will hot-reload without losing state
+```
+
+## Dynamic Import
+
+```javascript
+// Code splitting
+async function loadAdminPanel() {
+  const { AdminPanel } = await import('./admin/AdminPanel');
+  return AdminPanel;
+}
+
+// Conditional imports
+if (Meteor.isClient) {
+  const { render } = await import('react-dom/client');
+}
+
+// Route-based code splitting
+const routes = [
+  {
+    path: '/admin',
+    component: () => import('./pages/Admin')
+  },
+  {
+    path: '/user',
+    component: () => import('./pages/User')
+  }
+];
+```
+
+## Babel Configuration
+
+### Default Configuration
+
+The package includes sensible defaults:
+
+```javascript
+// Automatically configured:
+// - ES2015+ features
+// - React JSX
+// - Dynamic imports
+// - Class properties
+// - Optional chaining
+// - Nullish coalescing
+```
+
+### Custom Babel Config
+
+Create `.babelrc` or `babel.config.js`:
+
+```javascript
+// babel.config.js
+module.exports = {
+  presets: [
+    ['@babel/preset-env', {
+      targets: {
+        browsers: ['last 2 versions']
+      }
+    }],
+    '@babel/preset-react'
+  ],
+  plugins: [
+    '@babel/plugin-proposal-class-properties',
+    '@babel/plugin-proposal-optional-chaining'
+  ]
+};
+```
+
+## Modern vs Legacy Bundles
+
+Meteor automatically creates two bundles:
+
+```javascript
+// Modern bundle (ES6+ for modern browsers)
+// - Smaller file size
+// - Faster execution
+// - Native features
+
+// Legacy bundle (ES5 for old browsers)
+// - Transpiled to ES5
+// - Polyfills included
+// - Wider compatibility
+
+// Automatic selection based on browser capabilities
+```
+
+## Source Maps
+
+Debug original source code:
+
+```javascript
+// Source maps are automatically generated
+// Browser shows original ES6+ code in debugger
+// Stack traces reference original line numbers
+```
+
+## Best Practices
+
+<Tip>
+**Use const by default** - Only use let when reassignment is needed
+</Tip>
+
+<Tip>
+**Prefer arrow functions** - Especially for callbacks
+</Tip>
+
+<Tip>
+**Use async/await** - More readable than promise chains
+</Tip>
+
+<Tip>
+**Destructure imports** - Import only what you need
+</Tip>
+
+```javascript
+// Good
+const { Meteor } = require('meteor/meteor');
+const data = await fetchData();
+
+// Avoid
+var Meteor = require('meteor/meteor').Meteor;
+fetchData().then(function(data) { });
+```
+
+## Common Patterns
+
+### Async Meteor Startup
+
+```javascript
+Meteor.startup(async () => {
+  // Async initialization
+  await initializeDatabase();
+  await loadConfiguration();
+  console.log('App started');
+});
+```
+
+### Export Collections
+
+```javascript
+// collections/Todos.js
+import { Mongo } from 'meteor/mongo';
+
+export const Todos = new Mongo.Collection('todos');
+
+if (Meteor.isServer) {
+  // Server-only code
+  Todos.allow({
+    insert: () => false,
+    update: () => false,
+    remove: () => false
+  });
+}
+```
+
+### Async Publications
+
+```javascript
+Meteor.publish('userData', async function() {
+  if (!this.userId) {
+    return this.ready();
+  }
+  
+  // Async operations before publishing
+  await checkPermissions(this.userId);
+  
+  return Meteor.users.find(
+    { _id: this.userId },
+    { fields: { emails: 1, profile: 1 } }
+  );
+});
+```
+
+## Performance
+
+The ecmascript package optimizes builds:
+
+- **Tree shaking** - Remove unused code
+- **Minification** - Smaller production bundles
+- **Code splitting** - Load code on demand
+- **Caching** - Fast rebuilds during development
+
+## Debugging
+
+```javascript
+// Use debugger statement
+function complexFunction() {
+  debugger; // Pauses execution in browser
+  // ... code
+}
+
+// Console methods work as expected
+console.log('Value:', value);
+console.error('Error:', error);
+console.table(arrayOfObjects);
+console.time('operation');
+// ... code
+console.timeEnd('operation');
+```
+
+## Related Packages
+
+<CardGroup cols={2}>
+  <Card title="typescript" icon="code" href="/packages/typescript">
+    TypeScript compiler for Meteor
+  </Card>
+  <Card title="babel-compiler" icon="gears" href="#">
+    Babel compilation engine
+  </Card>
+  <Card title="modules" icon="cube" href="#">
+    ES6 module system
+  </Card>
+  <Card title="dynamic-import" icon="download" href="#">
+    Dynamic import() support
+  </Card>
+</CardGroup>
+
+## Source Code
+
+- [packages/ecmascript](https://github.com/meteor/meteor/tree/devel/packages/ecmascript)

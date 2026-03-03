@@ -1,0 +1,205 @@
+---
+title: meteor deploy
+description: Deploy your Meteor application to Galaxy
+---
+
+The `meteor deploy` command deploys your Meteor application to Galaxy, Meteor's hosting service.
+
+## Usage
+
+```bash
+meteor deploy <site> [options]
+```
+
+## Basic Usage
+
+Deploy to a meteorapp.com subdomain:
+
+```bash
+meteor deploy myapp.meteorapp.com
+```
+
+You can deploy to any available name under `meteorapp.com` without additional configuration.
+
+## Custom Domains
+
+To deploy to a custom domain:
+
+```bash
+meteor deploy myapp.mydomain.com
+```
+
+You'll also need to configure your domain's DNS records. See the [Galaxy DNS documentation](http://cloud-guide.meteor.com/dns.html) for details.
+
+## Options
+
+<ParamField path="--settings" type="string">
+  Set optional data for Meteor.settings. This will be available at runtime in `Meteor.settings` on the server. If the object contains a key named `public`, then `Meteor.settings.public` will also be available on the client. The argument is the path to a JSON file. Settings persist across deployments until you specify a different settings file. To unset settings, pass an empty settings file.
+</ParamField>
+
+<ParamField path="--debug" type="boolean" default="false">
+  Deploy in debug mode (don't minify, etc)
+</ParamField>
+
+<ParamField path="--delete" type="boolean" default="false">
+  Permanently delete this deployment, including all of its stored data
+</ParamField>
+
+<ParamField path="--allow-incompatible-update" type="boolean" default="false">
+  Allow packages in your project to be upgraded or downgraded to versions that are potentially incompatible with the current versions, if required to satisfy all package version constraints.
+</ParamField>
+
+<ParamField path="--deploy-polling-timeout" type="number" default="900000">
+  The number of milliseconds to wait for build/deploy success or failure after a successful upload of your app's minified code. Defaults to 15 minutes.
+</ParamField>
+
+<ParamField path="--no-wait" type="boolean" default="false">
+  Exit when Meteor has uploaded the app's code instead of waiting for the deploy to conclude
+</ParamField>
+
+<ParamField path="--cache-build" type="boolean" default="false">
+  Reuse the build already created if the git commit hash is the same
+</ParamField>
+
+<ParamField path="--free" type="boolean" default="false">
+  When deploying an app for the first time, deploy in Galaxy's free mode
+</ParamField>
+
+<ParamField path="--plan" type="string">
+  Change the app plan. Valid values: `professional`, `essentials`, or `free`. This argument overwrites the `--free` argument.
+</ParamField>
+
+<ParamField path="--mongo" type="boolean" default="false">
+  If true and no mongo URL is provided in settings (`galaxy.meteor.com`.env.MONGO_URL), Galaxy will create a database for your app in its shared cluster and insert the URL in your app's settings.
+</ParamField>
+
+<ParamField path="--container-size" type="string">
+  Change your app's container size using the deploy command. Valid values: `tiny`, `compact`, `standard`, `double`, `quad`, `octa`, or `dozen`.
+</ParamField>
+
+## Examples
+
+Deploy with settings:
+
+```bash
+meteor deploy myapp.meteorapp.com --settings settings.json
+```
+
+Deploy in debug mode:
+
+```bash
+meteor deploy myapp.meteorapp.com --debug
+```
+
+Deploy as a free app:
+
+```bash
+meteor deploy myapp.meteorapp.com --free
+```
+
+Deploy with a specific plan:
+
+```bash
+meteor deploy myapp.meteorapp.com --plan professional
+```
+
+Deploy with a specific container size:
+
+```bash
+meteor deploy myapp.meteorapp.com --container-size standard
+```
+
+Deploy with automatic MongoDB provisioning:
+
+```bash
+meteor deploy myapp.meteorapp.com --mongo
+```
+
+Deploy without waiting for completion:
+
+```bash
+meteor deploy myapp.meteorapp.com --no-wait
+```
+
+Delete a deployment:
+
+```bash
+meteor deploy myapp.meteorapp.com --delete
+```
+
+## Settings File
+
+The `--settings` flag allows you to pass deploy-specific configuration to your application:
+
+```json
+{
+  "public": {
+    "analyticsKey": "xyz123"
+  },
+  "private": {
+    "apiKey": "secret123"
+  }
+}
+```
+
+Server-side code can access all settings:
+
+```javascript
+Meteor.settings.private.apiKey // "secret123"
+```
+
+Client-side code can only access public settings:
+
+```javascript
+Meteor.settings.public.analyticsKey // "xyz123"
+```
+
+## Managing Authorization
+
+Use the `meteor authorized` command to manage who can deploy to a site:
+
+```bash
+# List authorized users
+meteor authorized myapp.meteorapp.com
+
+# Add a user
+meteor authorized myapp.meteorapp.com --add username
+
+# Remove a user
+meteor authorized myapp.meteorapp.com --remove username
+
+# Transfer ownership (Galaxy only)
+meteor authorized myapp.meteorapp.com --transfer username
+```
+
+## Galaxy Plans
+
+Galaxy offers different hosting plans:
+
+- **Free**: For development and testing
+- **Essentials**: For production apps with basic needs
+- **Professional**: For production apps with advanced features
+
+You can change plans using the `--plan` option:
+
+```bash
+meteor deploy myapp.meteorapp.com --plan professional
+```
+
+## Container Sizes
+
+Available container sizes (from smallest to largest):
+
+- `tiny`
+- `compact`
+- `standard`
+- `double`
+- `quad`
+- `octa`
+- `dozen`
+
+Change container size:
+
+```bash
+meteor deploy myapp.meteorapp.com --container-size double
+```

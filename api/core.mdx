@@ -1,0 +1,206 @@
+---
+title: 'Core API'
+description: 'Core Meteor API for building reactive applications'
+---
+
+# Meteor Core API
+
+The Core Meteor API provides the fundamental building blocks for creating reactive, real-time applications. This includes core methods, reactivity, and essential utilities.
+
+## Meteor Namespace
+
+The global `Meteor` namespace contains all core functionality available on both client and server.
+
+### Meteor.isClient
+
+<ParamField body="Meteor.isClient" type="boolean">
+  Boolean variable that is true if running in a client environment.
+</ParamField>
+
+```javascript
+if (Meteor.isClient) {
+  // Code runs only on client
+}
+```
+
+### Meteor.isServer
+
+<ParamField body="Meteor.isServer" type="boolean">
+  Boolean variable that is true if running in a server environment.
+</ParamField>
+
+```javascript
+if (Meteor.isServer) {
+  // Code runs only on server
+}
+```
+
+### Meteor.startup()
+
+<ParamField body="func" type="function" required>
+  A function to run on startup.
+</ParamField>
+
+Run code when the client or server starts.
+
+```javascript
+Meteor.startup(() => {
+  console.log('App started!');
+});
+```
+
+### Meteor.wrapAsync()
+
+Wrap an asynchronous function to run synchronously using fibers.
+
+<ParamField body="func" type="function" required>
+  An asynchronous function to wrap.
+</ParamField>
+
+<ParamField body="context" type="object">
+  Optional `this` context for the function.
+</ParamField>
+
+```javascript
+const wrappedFunction = Meteor.wrapAsync(asyncFunction);
+const result = wrappedFunction(arg1, arg2);
+```
+
+### Meteor.defer()
+
+Defer execution of a function to run asynchronously after the current method finishes.
+
+<ParamField body="func" type="function" required>
+  The function to defer.
+</ParamField>
+
+```javascript
+Meteor.defer(() => {
+  console.log('This runs after current execution context');
+});
+```
+
+### Meteor.absoluteUrl()
+
+Generate an absolute URL pointing to the application.
+
+<ParamField body="path" type="string">
+  A path to append to the root URL.
+</ParamField>
+
+<ParamField body="options" type="object">
+  Options object.
+</ParamField>
+
+<ResponseField name="options.secure" type="boolean">
+  Create an HTTPS URL.
+</ResponseField>
+
+<ResponseField name="options.replaceLocalhost" type="string">
+  Replace localhost with this hostname.
+</ResponseField>
+
+<ResponseField name="options.rootUrl" type="string">
+  Override the default ROOT_URL.
+</ResponseField>
+
+```javascript
+const url = Meteor.absoluteUrl('/page');
+// Returns: "http://localhost:3000/page"
+
+const secureUrl = Meteor.absoluteUrl('/api', { secure: true });
+// Returns: "https://localhost:3000/api"
+```
+
+### Meteor.settings
+
+<ParamField body="Meteor.settings" type="object">
+  Contains deployment-specific configuration. Settings are loaded from a JSON file specified with `--settings`.
+</ParamField>
+
+```javascript
+// In settings.json:
+// {
+//   "public": {
+//     "apiKey": "xyz"
+//   },
+//   "privateKey": "secret"
+// }
+
+// Client and server can access:
+const apiKey = Meteor.settings.public.apiKey;
+
+// Only server can access:
+if (Meteor.isServer) {
+  const privateKey = Meteor.settings.privateKey;
+}
+```
+
+### Meteor.release
+
+<ParamField body="Meteor.release" type="string">
+  The name of the Meteor release with which the project was built, for example `"METEOR@1.2.3"`.
+</ParamField>
+
+```javascript
+console.log('Running Meteor version:', Meteor.release);
+```
+
+## Environment Variables
+
+### ROOT_URL
+
+Set the root URL for the application.
+
+```bash
+ROOT_URL=https://myapp.com meteor
+```
+
+### MONGO_URL
+
+Specify the MongoDB connection string.
+
+```bash
+MONGO_URL=mongodb://localhost:27017/myapp meteor
+```
+
+### PORT
+
+Set the port on which the application listens.
+
+```bash
+PORT=3000 meteor
+```
+
+## Development Utilities
+
+### Meteor._debug()
+
+Log a message with Meteor's logging system. Uses `console.error` on the client.
+
+```javascript
+Meteor._debug('Debug message', { data: 'value' });
+```
+
+### Meteor.Error
+
+Create a Meteor-specific error.
+
+<ParamField body="error" type="string|number" required>
+  A numeric error code or string error type.
+</ParamField>
+
+<ParamField body="reason" type="string">
+  Optional description of the error.
+</ParamField>
+
+<ParamField body="details" type="string">
+  Optional additional details.
+</ParamField>
+
+```javascript
+throw new Meteor.Error('not-authorized', 
+  'You must be logged in',
+  'Additional error details'
+);
+```

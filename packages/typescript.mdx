@@ -1,0 +1,591 @@
+---
+title: TypeScript
+description: TypeScript compiler for Meteor applications
+---
+
+The `typescript` package provides TypeScript support in Meteor applications, compiling `.ts` and `.tsx` files to JavaScript.
+
+## Installation
+
+```bash
+meteor add typescript
+```
+
+## Overview
+
+The typescript package provides:
+
+- **TypeScript Compilation** - Compile .ts and .tsx files
+- **Type Checking** - Static type checking during development
+- **React Support** - TSX for React components
+- **Babel Integration** - Combined with ECMAScript features
+- **Source Maps** - Debug original TypeScript source
+- **Fast Refresh** - Hot reloading for React components
+
+## Package Information
+
+- **Version**: 5.9.3
+- **Summary**: Compiler plugin that compiles TypeScript and ECMAScript in .ts and .tsx files
+- **Dependencies**: `babel-compiler`, `babel-runtime`, `modules`, `ecmascript-runtime`, `promise`, `dynamic-import`
+- **Dev Only**: true (compilation happens at build time)
+
+## Getting Started
+
+### Basic TypeScript File
+
+```typescript
+// server/main.ts
+import { Meteor } from 'meteor/meteor';
+import { Todos } from '../imports/collections/Todos';
+
+Meteor.startup(async () => {
+  const count: number = await Todos.find().countAsync();
+  console.log(`Found ${count} todos`);
+});
+```
+
+### Collection with Types
+
+```typescript
+// imports/collections/Todos.ts
+import { Mongo } from 'meteor/mongo';
+
+interface Todo {
+  _id?: string;
+  text: string;
+  done: boolean;
+  userId: string;
+  createdAt: Date;
+}
+
+export const Todos = new Mongo.Collection<Todo>('todos');
+
+if (Meteor.isServer) {
+  Meteor.publish('todos', function() {
+    return Todos.find({ userId: this.userId || '' });
+  });
+}
+
+Meteor.methods({
+  async 'todos.insert'(text: string): Promise<string> {
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized');
+    }
+    
+    return await Todos.insertAsync({
+      text,
+      done: false,
+      userId: this.userId,
+      createdAt: new Date()
+    });
+  }
+});
+```
+
+## TypeScript Configuration
+
+### tsconfig.json
+
+Create `tsconfig.json` in your project root:
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "lib": ["ES2020", "DOM"],
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "jsx": "react",
+    "baseUrl": ".",
+    "paths": {
+      "/imports/*": ["./imports/*"]
+    }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules",
+    ".meteor"
+  ]
+}
+```
+
+## Type Definitions
+
+### Install Meteor Types
+
+```bash
+npm install --save-dev @types/meteor
+```
+
+### Using Meteor Types
+
+```typescript
+import { Meteor } from 'meteor/meteor';
+import { Mongo } from 'meteor/mongo';
+import { check } from 'meteor/check';
+
+// Types are automatically available
+Meteor.startup(() => {
+  console.log('Server started');
+});
+
+// User type
+const user: Meteor.User | null = Meteor.user();
+const userId: string | null = Meteor.userId();
+```
+
+### Custom Type Definitions
+
+```typescript
+// types/index.d.ts
+
+// Extend Meteor.User
+declare module 'meteor/meteor' {
+  module Meteor {
+    interface User {
+      profile?: {
+        name: string;
+        avatar?: string;
+      };
+      roles?: string[];
+      organizationId?: string;
+    }
+  }
+}
+
+// Extend settings
+declare module 'meteor/meteor' {
+  module Meteor {
+    interface Settings {
+      public: {
+        apiUrl: string;
+        features: {
+          newUI: boolean;
+        };
+      };
+      private: {
+        apiKey: string;
+      };
+    }
+  }
+}
+```
+
+## React with TypeScript
+
+### Functional Component
+
+```typescript
+// imports/ui/TodoItem.tsx
+import React from 'react';
+
+interface TodoItemProps {
+  todo: {
+    _id: string;
+    text: string;
+    done: boolean;
+  };
+  onToggle: (id: string) => void;
+  onDelete: (id: string) => void;
+}
+
+export const TodoItem: React.FC<TodoItemProps> = ({ todo, onToggle, onDelete }) => {
+  return (
+    <li>
+      <input
+        type="checkbox"
+        checked={todo.done}
+        onChange={() => onToggle(todo._id)}
+      />
+      <span style={{ textDecoration: todo.done ? 'line-through' : 'none' }}>
+        {todo.text}
+      </span>
+      <button onClick={() => onDelete(todo._id)}>Delete</button>
+    </li>
+  );
+};
+```
+
+### Component with State
+
+```typescript
+import React, { useState, useEffect } from 'react';
+import { useTracker } from 'meteor/react-meteor-data';
+import { Todos } from '../collections/Todos';
+
+interface TodoListProps {
+  filter?: 'all' | 'active' | 'completed';
+}
+
+export const TodoList: React.FC<TodoListProps> = ({ filter = 'all' }) => {
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  
+  const { todos, loading } = useTracker(() => {
+    const handle = Meteor.subscribe('todos');
+    
+    let selector: Mongo.Selector<Todo> = {};
+    
+    if (filter === 'active') {
+      selector.done = false;
+    } else if (filter === 'completed') {
+      selector.done = true;
+    }
+    
+    if (searchQuery) {
+      selector.text = { $regex: searchQuery, $options: 'i' };
+    }
+    
+    return {
+      todos: Todos.find(selector).fetch(),
+      loading: !handle.ready()
+    };
+  }, [filter, searchQuery]);
+  
+  if (loading) {
+    return <div>Loading...</div>;
+  }
+  
+  return (
+    <div>
+      <input
+        type="text"
+        placeholder="Search..."
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+      />
+      <ul>
+        {todos.map(todo => (
+          <TodoItem key={todo._id} todo={todo} />
+        ))}
+      </ul>
+    </div>
+  );
+};
+```
+
+## Meteor Methods with Types
+
+### Define Method Types
+
+```typescript
+// imports/api/methods/todos.ts
+import { Meteor } from 'meteor/meteor';
+import { check } from 'meteor/check';
+import { Todos } from '../collections/Todos';
+
+export interface TodoMethods {
+  'todos.insert': (text: string) => Promise<string>;
+  'todos.update': (id: string, text: string) => Promise<number>;
+  'todos.toggle': (id: string) => Promise<number>;
+  'todos.remove': (id: string) => Promise<number>;
+}
+
+Meteor.methods<TodoMethods>({
+  async 'todos.insert'(text: string): Promise<string> {
+    check(text, String);
+    
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized');
+    }
+    
+    return await Todos.insertAsync({
+      text,
+      done: false,
+      userId: this.userId,
+      createdAt: new Date()
+    });
+  },
+  
+  async 'todos.toggle'(id: string): Promise<number> {
+    check(id, String);
+    
+    const todo = await Todos.findOneAsync(id);
+    
+    if (!todo || todo.userId !== this.userId) {
+      throw new Meteor.Error('not-authorized');
+    }
+    
+    return await Todos.updateAsync(id, {
+      $set: { done: !todo.done }
+    });
+  }
+});
+```
+
+### Call Methods with Type Safety
+
+```typescript
+// Client code
+import { Meteor } from 'meteor/meteor';
+import type { TodoMethods } from './methods/todos';
+
+// Type-safe method calls
+async function createTodo(text: string): Promise<string> {
+  return await Meteor.callAsync<TodoMethods['todos.insert']>('todos.insert', text);
+}
+
+async function toggleTodo(id: string): Promise<void> {
+  await Meteor.callAsync<TodoMethods['todos.toggle']>('todos.toggle', id);
+}
+```
+
+## Publications with Types
+
+```typescript
+import { Meteor } from 'meteor/meteor';
+import { Todos } from '../collections/Todos';
+import { Posts } from '../collections/Posts';
+
+// Simple publication
+Meteor.publish('todos', function() {
+  if (!this.userId) {
+    return this.ready();
+  }
+  
+  return Todos.find({ userId: this.userId });
+});
+
+// Publication with parameters
+Meteor.publish('todosByStatus', function(status: 'active' | 'completed') {
+  check(status, String);
+  
+  return Todos.find({
+    userId: this.userId || '',
+    done: status === 'completed'
+  });
+});
+
+// Multiple cursors
+Meteor.publish('userDashboard', function() {
+  if (!this.userId) {
+    return this.ready();
+  }
+  
+  return [
+    Todos.find({ userId: this.userId }),
+    Posts.find({ authorId: this.userId })
+  ];
+});
+```
+
+## Generic Types
+
+```typescript
+// Generic collection wrapper
+class TypedCollection<T> extends Mongo.Collection<T> {
+  async findOneOrThrow(selector: Mongo.Selector<T>): Promise<T> {
+    const doc = await this.findOneAsync(selector);
+    if (!doc) {
+      throw new Meteor.Error('not-found', 'Document not found');
+    }
+    return doc;
+  }
+  
+  async updateOne(
+    selector: Mongo.Selector<T>,
+    modifier: Mongo.Modifier<T>
+  ): Promise<void> {
+    const count = await this.updateAsync(selector, modifier);
+    if (count === 0) {
+      throw new Meteor.Error('not-found', 'No document updated');
+    }
+  }
+}
+
+// Use generic collection
+interface User {
+  _id?: string;
+  name: string;
+  email: string;
+}
+
+const Users = new TypedCollection<User>('users');
+```
+
+## Utility Types
+
+```typescript
+// Omit _id for inserts
+type TodoInsert = Omit<Todo, '_id'>;
+
+const newTodo: TodoInsert = {
+  text: 'New todo',
+  done: false,
+  userId: 'user123',
+  createdAt: new Date()
+};
+
+// Partial for updates
+type TodoUpdate = Partial<Todo>;
+
+const update: TodoUpdate = {
+  done: true
+};
+
+// Pick specific fields
+type TodoSummary = Pick<Todo, '_id' | 'text' | 'done'>;
+
+const summary: TodoSummary = {
+  _id: '1',
+  text: 'Todo',
+  done: false
+};
+```
+
+## Async/Await with Types
+
+```typescript
+// Async function with return type
+async function getUserTodos(userId: string): Promise<Todo[]> {
+  return await Todos.find({ userId }).fetchAsync();
+}
+
+// Error handling with types
+async function safeFetchTodo(id: string): Promise<Todo | null> {
+  try {
+    const todo = await Todos.findOneAsync({ _id: id });
+    return todo || null;
+  } catch (error) {
+    console.error('Error fetching todo:', error);
+    return null;
+  }
+}
+
+// Promise.all with types
+async function loadAllData(): Promise<{
+  todos: Todo[];
+  users: Meteor.User[];
+}> {
+  const [todos, users] = await Promise.all([
+    Todos.find().fetchAsync(),
+    Meteor.users.find().fetchAsync()
+  ]);
+  
+  return { todos, users };
+}
+```
+
+## Enums and Const Assertions
+
+```typescript
+// Enum
+enum TodoStatus {
+  Active = 'active',
+  Completed = 'completed',
+  Archived = 'archived'
+}
+
+interface TodoWithStatus {
+  _id: string;
+  text: string;
+  status: TodoStatus;
+}
+
+// Const assertion
+const PRIORITIES = ['low', 'medium', 'high'] as const;
+type Priority = typeof PRIORITIES[number]; // 'low' | 'medium' | 'high'
+
+interface TodoWithPriority {
+  _id: string;
+  text: string;
+  priority: Priority;
+}
+```
+
+## Best Practices
+
+<Tip>
+**Enable strict mode** - Use `"strict": true` in tsconfig.json
+</Tip>
+
+<Tip>
+**Define interfaces for documents** - Create types for all collection documents
+</Tip>
+
+<Tip>
+**Type method parameters and returns** - Explicit types for all methods
+</Tip>
+
+<Tip>
+**Use generics** - Make reusable typed utilities
+</Tip>
+
+```typescript
+// Good: Explicit types
+interface Todo {
+  _id?: string;
+  text: string;
+  done: boolean;
+}
+
+const Todos = new Mongo.Collection<Todo>('todos');
+
+async function getTodo(id: string): Promise<Todo | undefined> {
+  return await Todos.findOneAsync({ _id: id });
+}
+
+// Avoid: Any types
+const Todos = new Mongo.Collection('todos');
+
+function getTodo(id) {
+  return Todos.findOne({ _id: id });
+}
+```
+
+## Common Issues
+
+### Module Resolution
+
+If imports aren't working:
+
+```json
+// tsconfig.json
+{
+  "compilerOptions": {
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true
+  }
+}
+```
+
+### Missing Types
+
+```bash
+# Install type definitions
+npm install --save-dev @types/meteor
+npm install --save-dev @types/react
+npm install --save-dev @types/react-dom
+```
+
+## Related Packages
+
+<CardGroup cols={2}>
+  <Card title="ecmascript" icon="js" href="/packages/ecmascript">
+    ES2015+ JavaScript support
+  </Card>
+  <Card title="babel-compiler" icon="gears" href="#">
+    Babel compilation engine
+  </Card>
+</CardGroup>
+
+## Source Code
+
+- [packages/typescript](https://github.com/meteor/meteor/tree/devel/packages/typescript)

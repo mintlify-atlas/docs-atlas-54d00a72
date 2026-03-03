@@ -1,122 +1,189 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Meteor",
+  "theme": "aspen",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#DE4F4F",
+    "light": "#DE4F4F",
+    "dark": "#DE4F4F"
   },
-  "favicon": "/favicon.svg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/meteor/meteor"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/meteor/meteor"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Getting Started",
             "pages": [
-              "index",
+              "introduction",
+              "installation",
               "quickstart",
-              "development"
+              "tutorial"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "concepts/overview",
+              "concepts/project-structure",
+              "concepts/packages",
+              "concepts/isobuild",
+              "concepts/reactivity",
+              "concepts/ddp",
+              "concepts/full-stack"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Framework Guides",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "guides/accounts",
+              "guides/data-loading",
+              "guides/methods",
+              "guides/publications",
+              "guides/routing",
+              "guides/mobile",
+              "guides/testing",
+              "guides/security"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Frontend Integration",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "frontend/react",
+              "frontend/vue",
+              "frontend/blaze",
+              "frontend/angular"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "CLI Commands",
             "pages": [
-              "api-reference/introduction"
+              "cli/overview",
+              "cli/create",
+              "cli/run",
+              "cli/build",
+              "cli/deploy",
+              "cli/test",
+              "cli/add",
+              "cli/remove",
+              "cli/list",
+              "cli/update",
+              "cli/publish"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Core APIs",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/core",
+              "api/meteor",
+              "api/tracker",
+              "api/session",
+              "api/accounts",
+              "api/passwords",
+              "api/methods",
+              "api/pubsub",
+              "api/connections"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Packages",
+        "groups": [
+          {
+            "group": "Package System",
+            "pages": [
+              "packages/overview",
+              "packages/creating",
+              "packages/publishing",
+              "packages/atmosphere"
+            ]
+          },
+          {
+            "group": "Core Packages",
+            "pages": [
+              "packages/accounts-base",
+              "packages/accounts-password",
+              "packages/ddp",
+              "packages/mongo",
+              "packages/tracker",
+              "packages/reactive-var",
+              "packages/reactive-dict",
+              "packages/webapp",
+              "packages/ecmascript",
+              "packages/typescript"
+            ]
+          },
+          {
+            "group": "Build Packages",
+            "pages": [
+              "packages/babel-compiler",
+              "packages/rspack",
+              "packages/minifier-js",
+              "packages/minifier-css"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Advanced",
+        "groups": [
+          {
+            "group": "Build System",
+            "pages": [
+              "advanced/isobuild",
+              "advanced/isopacks",
+              "advanced/bundler",
+              "advanced/compiler-plugins",
+              "advanced/build-performance"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/overview",
+              "deployment/galaxy",
+              "deployment/docker",
+              "deployment/custom"
+            ]
+          },
+          {
+            "group": "Performance",
+            "pages": [
+              "performance/optimization",
+              "performance/bundle-size",
+              "performance/caching",
+              "performance/profiling"
+            ]
+          },
+          {
+            "group": "Contributing",
+            "pages": [
+              "contributing/overview",
+              "contributing/development",
+              "contributing/testing",
+              "contributing/packages",
+              "contributing/releases"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

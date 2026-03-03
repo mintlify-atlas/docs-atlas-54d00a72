@@ -1,0 +1,306 @@
+---
+title: Testing Guidelines
+description: Learn how to run and write tests for Meteor core
+---
+
+Testing is essential when contributing to Meteor. This guide covers running existing tests and writing new ones.
+
+## Test Your Local Copy
+
+<Warning>
+Always run tests against your checked-out copy of Meteor, not the globally-installed version. Use `./meteor` or your alias, not just `meteor`.
+</Warning>
+
+This ensures tests run against your development version, not the stable release.
+
+## Package Tests (TinyTest)
+
+Core Meteor packages use [TinyTest](https://github.com/meteor/meteor/tree/devel/packages/tinytest/README.md) for testing.
+
+### Running All Package Tests
+
+Run the full test suite:
+
+```bash
+./meteor test-packages
+```
+
+This starts a Meteor app with TinyTest. View results at `http://localhost:3000`.
+
+### Console Output
+
+To see results in the console instead of the browser:
+
+```bash
+PUPPETEER_DOWNLOAD_PATH=~/.npm/chromium ./packages/test-in-console/run.sh
+```
+
+<Tip>
+`PUPPETEER_DOWNLOAD_PATH` is optional but useful to skip downloading Chromium on every run.
+</Tip>
+
+This is how tests run on CI (Travis/CircleCI).
+
+### Running Specific Package Tests
+
+Test a specific package by name or path:
+
+```bash
+./meteor test-packages mongo
+```
+
+### Filtering Individual Tests
+
+Use `TINYTEST_FILTER` to run specific tests (supports regex):
+
+```bash
+TINYTEST_FILTER="collection - call new Mongo.Collection" ./meteor test-packages
+```
+
+You can also use filters with `test-in-console`:
+
+```bash
+TINYTEST_FILTER="your-pattern" ./packages/test-in-console/run.sh
+```
+
+## Meteor Tool Self-Tests
+
+The Meteor tool (CLI) uses a custom "self-test" system that can't use TinyTest. These are end-to-end tests for CLI interactions.
+
+### Running All Self-Tests
+
+```bash
+# Install dependencies first
+./meteor --get-ready
+
+# Set timeout multiplier
+export TIMEOUT_SCALE_FACTOR=3
+
+# Run tests
+./meteor self-test
+```
+
+<Info>
+The timeout scale factor depends on your hardware. 3 is a safe choice for automation, but you may need to adjust based on your machine's speed.
+</Info>
+
+### Listing Available Tests
+
+See all available self-tests:
+
+```bash
+./meteor self-test --list
+```
+
+### Running Specific Tests
+
+Use regex patterns to match test names:
+
+```bash
+# List tests starting with 'a' or 'b'
+./meteor self-test "^[a-b]" --list
+
+# Run those tests (remove --list)
+./meteor self-test "^[a-b]"
+```
+
+### Excluding Tests
+
+Exclude specific tests using regex:
+
+```bash
+# List all tests EXCEPT those starting with 'a' or 'b'
+./meteor self-test --exclude "^[a-b]" --list
+
+# Run the filtered tests
+./meteor self-test --exclude "^[a-b]"
+```
+
+### Avoiding Retries
+
+On CI, tests retry to avoid false failures. In development, disable retries:
+
+```bash
+./meteor self-test --retries 0
+```
+
+### More Self-Test Options
+
+For complete self-test documentation, see the [Meteor Tool README](https://github.com/meteor/meteor/blob/master/tools/README.md#testing).
+
+## Writing Tests
+
+When submitting pull requests, include tests that prove your code works.
+
+### Package Tests Example
+
+For a package in `packages/tracker/`, create tests in the `Package.onTest` section:
+
+```javascript tracker_tests.js
+Tinytest.add('Tracker - basic reactivity', function (test) {
+  let computationRan = false;
+  
+  Tracker.autorun(function () {
+    computationRan = true;
+  });
+  
+  test.isTrue(computationRan, 'Computation should run immediately');
+});
+```
+
+Then add it to `package.js`:
+
+```javascript package.js
+Package.onTest(function (api) {
+  api.use('tinytest');
+  api.use('tracker');
+  api.addFiles('tracker_tests.js', 'client');
+});
+```
+
+### TinyTest Assertions
+
+Common TinyTest assertions:
+
+```javascript
+// Equality
+test.equal(actual, expected, message);
+test.notEqual(actual, expected, message);
+
+// Boolean
+test.isTrue(value, message);
+test.isFalse(value, message);
+
+// Type checks
+test.isNull(value, message);
+test.isUndefined(value, message);
+
+// Exceptions
+test.throws(func, expected);
+
+// Length
+test.length(obj, expected);
+
+// Inclusion
+test.include(array, item);
+```
+
+### Self-Test Example
+
+Self-tests are written differently. See the [`tool-testing`](https://github.com/meteor/meteor/tree/devel/tools/tool-testing) directory for examples.
+
+Basic structure:
+
+```javascript
+selftest.define("test name", function () {
+  const s = new Sandbox();
+  s.createApp("myapp", "standard-app");
+  s.cd("myapp");
+  
+  const run = s.run("run");
+  run.waitSecs(5);
+  run.match("Started your app");
+  run.stop();
+});
+```
+
+## Test Best Practices
+
+### Coverage
+
+- Test both success and failure cases
+- Test edge cases and boundary conditions
+- Test client and server code separately where applicable
+
+### Clarity
+
+- Use descriptive test names
+- Include helpful assertion messages
+- Keep tests focused on one behavior
+
+### Reliability
+
+- Avoid timing dependencies where possible
+- Clean up after tests (close connections, remove data)
+- Don't depend on test execution order
+
+### Performance
+
+- Keep tests fast
+- Use `testOnly: true` for internal exports needed only for testing
+- Mock external dependencies
+
+## Debugging Tests
+
+### Package Tests
+
+Debug TinyTest in the browser:
+
+1. Run `./meteor test-packages`
+2. Open `http://localhost:3000` in Chrome
+3. Open DevTools and set breakpoints
+4. Refresh to re-run tests
+
+### Self-Tests
+
+Debug self-tests with Node inspector:
+
+```bash
+TOOL_NODE_FLAGS="--inspect-brk" ./meteor self-test "your-test-pattern"
+```
+
+Then open `chrome://inspect` in Chrome.
+
+### Debug Test Apps
+
+When self-tests spawn test apps, debug them with:
+
+```bash
+SELF_TEST_TOOL_NODE_FLAGS="--inspect-brk=5859" ./meteor self-test
+```
+
+<Tip>
+Use a different port (e.g., 5859) to avoid conflicts with the main tool debugger on port 5858.
+</Tip>
+
+## Continuous Integration Tests
+
+CI tests are defined in:
+- [`circle.yml`](https://github.com/meteor/meteor/blob/devel/circle.yml) - CircleCI configuration
+- [`scripts/ci.sh`](https://github.com/meteor/meteor/blob/devel/scripts/ci.sh) - Test execution script
+
+You can run the same tests locally:
+
+```bash
+./scripts/ci.sh
+```
+
+### Slow Tests
+
+Some tests are too slow for regular CI and are in the `slow` designator:
+
+```bash
+./meteor self-test --slow
+```
+
+## Platform-Specific Testing
+
+### Windows
+
+<Warning>
+There's no Windows CI currently. Not all tests work on Windows. Contributions to improve Windows compatibility are welcome!
+</Warning>
+
+If you encounter Windows-specific test failures, please document them and consider submitting fixes.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Contributing Packages" icon="box" href="/contributing/packages">
+    Learn how to create and publish packages
+  </Card>
+  
+  <Card title="Development Setup" icon="code" href="/contributing/development">
+    Review development environment setup
+  </Card>
+</CardGroup>

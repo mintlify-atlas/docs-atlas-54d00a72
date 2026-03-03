@@ -1,0 +1,544 @@
+---
+title: WebApp
+description: HTTP server for serving Meteor applications
+---
+
+The `webapp` package provides Meteor's built-in HTTP server, serving your application over HTTP and managing client-server communication.
+
+## Installation
+
+```bash
+meteor add webapp
+```
+
+<Info>
+The `webapp` package is included by default in all Meteor applications.
+</Info>
+
+## Overview
+
+WebApp provides:
+
+- **HTTP Server** - Built on Express 5.x
+- **Static Asset Serving** - Automatic bundling and serving of client files
+- **Middleware Support** - Express middleware integration
+- **WebSocket Support** - For DDP connections via SockJS
+- **Hot Code Push** - Automatic client updates
+- **Modern/Legacy Bundles** - Differential serving based on browser capabilities
+
+## Package Information
+
+- **Version**: 2.1.0
+- **Summary**: Serves a Meteor app over HTTP
+- **Dependencies**: `express@5.1.0`, `compression@1.7.4`, `cookie-parser@1.4.6`
+- **Exports**: `WebApp` (server), `WebAppInternals` (server)
+
+## Basic Usage
+
+### Server-Side Exports
+
+```javascript
+import { WebApp } from 'meteor/webapp';
+import { WebAppInternals } from 'meteor/webapp';
+```
+
+### Client-Side
+
+```javascript
+import { WebApp } from 'meteor/webapp';
+
+// Client-side API is minimal
+console.log('App version:', WebApp.clientHash);
+```
+
+## Express Integration
+
+WebApp is built on Express 5.x. You can add middleware to the Connect/Express server:
+
+### Adding Middleware
+
+```javascript
+import { WebApp } from 'meteor/webapp';
+
+// Add middleware to the Express app
+WebApp.connectHandlers.use((req, res, next) => {
+  console.log('Request:', req.method, req.url);
+  next();
+});
+
+// Middleware for specific routes
+WebApp.connectHandlers.use('/api', (req, res, next) => {
+  res.setHeader('X-Custom-Header', 'value');
+  next();
+});
+```
+
+### Custom Routes
+
+```javascript
+// Serve custom content
+WebApp.connectHandlers.use('/health', (req, res) => {
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ status: 'ok', time: new Date() }));
+});
+
+// API endpoint
+WebApp.connectHandlers.use('/api/data', async (req, res) => {
+  const data = await fetchData();
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(data));
+});
+```
+
+### Using Express Middleware
+
+```javascript
+import bodyParser from 'body-parser';
+import cors from 'cors';
+
+// Parse JSON bodies
+WebApp.connectHandlers.use(bodyParser.json());
+
+// Enable CORS
+WebApp.connectHandlers.use(cors({
+  origin: 'https://trusted-site.com',
+  credentials: true
+}));
+
+// Custom middleware
+WebApp.connectHandlers.use((req, res, next) => {
+  // Add request ID
+  req.id = Math.random().toString(36).substr(2, 9);
+  next();
+});
+```
+
+## Raw Connect Handlers
+
+```javascript
+// Access the raw Connect/Express app
+const app = WebApp.connectHandlers;
+
+// Use Express routing
+app.get('/users/:id', (req, res) => {
+  const userId = req.params.id;
+  res.json({ userId, name: 'Example' });
+});
+
+app.post('/submit', (req, res) => {
+  console.log('Form submitted:', req.body);
+  res.json({ success: true });
+});
+```
+
+## HTTP Handlers
+
+### Request Handler
+
+```javascript
+WebApp.connectHandlers.use((req, res, next) => {
+  // req: Node.js IncomingMessage
+  // res: Node.js ServerResponse
+  
+  console.log('Method:', req.method);
+  console.log('URL:', req.url);
+  console.log('Headers:', req.headers);
+  console.log('IP:', req.connection.remoteAddress);
+  
+  next();
+});
+```
+
+### Response Manipulation
+
+```javascript
+WebApp.connectHandlers.use((req, res, next) => {
+  // Add custom headers
+  res.setHeader('X-Powered-By', 'Meteor');
+  res.setHeader('X-Frame-Options', 'DENY');
+  
+  // Override response
+  if (req.url === '/custom') {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end('<h1>Custom Page</h1>');
+    return;
+  }
+  
+  next();
+});
+```
+
+## Static File Serving
+
+### Custom Static Files
+
+```javascript
+import path from 'path';
+import express from 'express';
+
+// Serve additional static directory
+const staticPath = path.join(process.cwd(), 'public');
+WebApp.connectHandlers.use('/public', express.static(staticPath));
+```
+
+### Download Handler
+
+```javascript
+WebApp.connectHandlers.use('/download/:file', (req, res) => {
+  const filename = req.params.file;
+  const filepath = path.join(process.cwd(), 'files', filename);
+  
+  res.download(filepath, (err) => {
+    if (err) {
+      res.status(404).send('File not found');
+    }
+  });
+});
+```
+
+## Client Serving
+
+### Modify HTML Before Serving
+
+```javascript
+import { WebAppInternals } from 'meteor/webapp';
+
+// Inject content into HTML
+WebApp.addHtmlAttributeHook((request) => {
+  // Add attributes to <html> tag
+  return {
+    lang: 'en',
+    'data-theme': 'light'
+  };
+});
+```
+
+### Runtime Config
+
+```javascript
+// Set client runtime configuration
+WebApp.addRuntimeConfigHook((options) => {
+  // Add data available to client as __meteor_runtime_config__
+  options.runtimeConfig.customSetting = 'value';
+});
+```
+
+## Suppressing Default Behavior
+
+### Suppress Connect Handlers
+
+```javascript
+// Prevent Meteor from serving specific paths
+WebApp.suppressConnectErrors();
+
+WebApp.connectHandlers.use('/external', (req, res, next) => {
+  // Handle without Meteor's error handling
+  res.end('Custom handler');
+});
+```
+
+## Server Listening
+
+### Get Server Instance
+
+```javascript
+import { WebApp } from 'meteor/webapp';
+
+// Access underlying HTTP server
+const httpServer = WebApp.httpServer;
+
+// Listen for server events
+httpServer.on('listening', () => {
+  console.log('Server is listening');
+});
+
+httpServer.on('connection', (socket) => {
+  console.log('New connection from', socket.remoteAddress);
+});
+```
+
+### Custom Port and Host
+
+```bash
+# Set via environment variables
+export PORT=4000
+export BIND_IP=127.0.0.1
+meteor
+
+# Or use --port flag
+meteor --port 4000
+```
+
+## Compression
+
+WebApp includes automatic response compression:
+
+```javascript
+// Compression is enabled by default
+// Customize if needed by adding compression middleware
+import compression from 'compression';
+
+WebApp.connectHandlers.use(compression({
+  level: 6, // Compression level (0-9)
+  threshold: 1024 // Only compress if > 1KB
+}));
+```
+
+## Security Headers
+
+```javascript
+// Add security headers
+WebApp.connectHandlers.use((req, res, next) => {
+  // Prevent clickjacking
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  
+  // XSS protection
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  
+  // HTTPS only (if using SSL)
+  res.setHeader('Strict-Transport-Security', 
+    'max-age=31536000; includeSubDomains');
+  
+  // Content Security Policy
+  res.setHeader('Content-Security-Policy',
+    "default-src 'self'; script-src 'self' 'unsafe-inline'");
+  
+  next();
+});
+```
+
+## Cookie Parsing
+
+WebApp includes cookie-parser:
+
+```javascript
+WebApp.connectHandlers.use((req, res, next) => {
+  // Access parsed cookies
+  console.log('Cookies:', req.cookies);
+  console.log('Signed cookies:', req.signedCookies);
+  
+  // Set cookie
+  res.cookie('sessionId', '123', {
+    httpOnly: true,
+    secure: true,
+    maxAge: 86400000 // 24 hours
+  });
+  
+  next();
+});
+```
+
+## Request Logging
+
+```javascript
+// Simple request logger
+WebApp.connectHandlers.use((req, res, next) => {
+  const start = Date.now();
+  
+  // Log when response finishes
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(
+      `${req.method} ${req.url} ${res.statusCode} ${duration}ms`
+    );
+  });
+  
+  next();
+});
+```
+
+## Error Handling
+
+```javascript
+// Custom error handler (must be last)
+WebApp.connectHandlers.use((err, req, res, next) => {
+  console.error('Server error:', err);
+  
+  res.status(500).json({
+    error: 'Internal Server Error',
+    message: err.message,
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+  });
+});
+```
+
+## Client Hash
+
+WebApp provides version information for cache busting:
+
+```javascript
+// Server
+import { WebApp } from 'meteor/webapp';
+
+console.log('Client hash:', WebApp.clientHash);
+
+Meteor.methods({
+  'getClientVersion'() {
+    return WebApp.clientHash;
+  }
+});
+```
+
+```javascript
+// Client
+import { WebApp } from 'meteor/webapp';
+
+console.log('My version:', WebApp.clientHash);
+
+// Check if new version available
+Meteor.call('getClientVersion', (err, serverVersion) => {
+  if (serverVersion !== WebApp.clientHash) {
+    console.log('New version available!');
+  }
+});
+```
+
+## Hot Code Push
+
+### Detect Reload
+
+```javascript
+// Client: Detect when reload is triggered
+Meteor.startup(() => {
+  if (WebApp.reloadImmediately) {
+    console.log('App will reload soon');
+  }
+});
+```
+
+### Customize Reload Behavior
+
+```javascript
+// Client: Control when reload happens
+Reload._onMigrate((retry) => {
+  // Ask user if they want to reload
+  if (confirm('New version available. Reload now?')) {
+    return [true]; // Allow reload
+  }
+  
+  // Retry later
+  setTimeout(() => retry(), 60000);
+  return [false]; // Prevent reload for now
+});
+```
+
+## Modern vs Legacy Bundles
+
+WebApp serves different JavaScript bundles based on browser capabilities:
+
+```javascript
+// Automatic differential serving
+// - Modern browsers get smaller, faster ES6+ code
+// - Legacy browsers get transpiled ES5 code
+
+// No configuration needed - happens automatically!
+```
+
+## WebSocket Configuration
+
+```javascript
+// Configure SockJS (used by DDP)
+process.env.DISABLE_WEBSOCKETS = 'false';
+
+// In code:
+WebApp.httpServer.on('upgrade', (req, socket, head) => {
+  console.log('WebSocket upgrade request');
+});
+```
+
+## Complete Example: REST API
+
+```javascript
+import { WebApp } from 'meteor/webapp';
+import bodyParser from 'body-parser';
+
+// Parse JSON bodies
+WebApp.connectHandlers.use(bodyParser.json());
+
+// Authentication middleware
+const authenticate = (req, res, next) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  
+  if (!token) {
+    return res.status(401).json({ error: 'No token provided' });
+  }
+  
+  // Validate token
+  const user = validateToken(token);
+  if (!user) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+  
+  req.user = user;
+  next();
+};
+
+// Public endpoint
+WebApp.connectHandlers.get('/api/status', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date() });
+});
+
+// Protected endpoints
+WebApp.connectHandlers.get('/api/user', authenticate, (req, res) => {
+  res.json({ user: req.user });
+});
+
+WebApp.connectHandlers.post('/api/data', authenticate, async (req, res) => {
+  try {
+    const result = await processData(req.body, req.user);
+    res.json({ success: true, result });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Error handler
+WebApp.connectHandlers.use((err, req, res, next) => {
+  console.error('API Error:', err);
+  res.status(500).json({ error: 'Internal Server Error' });
+});
+```
+
+## Performance Tips
+
+<Tip>
+**Enable compression** - WebApp includes compression middleware by default
+</Tip>
+
+<Tip>
+**Cache static assets** - Set appropriate cache headers for static files
+</Tip>
+
+<Tip>
+**Use CDN** - Serve static assets from a CDN in production
+</Tip>
+
+```javascript
+// Set cache headers for static assets
+WebApp.connectHandlers.use('/assets', (req, res, next) => {
+  res.setHeader('Cache-Control', 'public, max-age=31536000');
+  next();
+});
+```
+
+## Related Packages
+
+<CardGroup cols={2}>
+  <Card title="ddp" icon="link" href="/packages/ddp">
+    DDP protocol over WebSocket
+  </Card>
+  <Card title="autoupdate" icon="rotate" href="#">
+    Hot code push system
+  </Card>
+  <Card title="boilerplate-generator" icon="file-code" href="#">
+    HTML generation for client
+  </Card>
+  <Card title="browser-policy" icon="shield" href="#">
+    Security headers and CSP
+  </Card>
+</CardGroup>
+
+## Source Code
+
+- [packages/webapp](https://github.com/meteor/meteor/tree/devel/packages/webapp)

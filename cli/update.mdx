@@ -1,0 +1,250 @@
+---
+title: meteor update
+description: Update your Meteor project and packages
+---
+
+The `meteor update` command upgrades your project's dependencies to their latest compatible versions.
+
+## Usage
+
+```bash
+meteor update
+meteor update --patch
+meteor update --release <release>
+meteor update --packages-only
+meteor update [packageName ...]
+meteor update --all-packages
+```
+
+## Basic Usage
+
+Update to the latest release and update packages:
+
+```bash
+meteor update
+```
+
+This updates:
+1. The Meteor release
+2. Packages used by the app to the latest versions that don't cause dependency conflicts
+
+## Update Modes
+
+### Patch Update
+
+Update to the latest patch release:
+
+```bash
+meteor update --patch
+```
+
+Patch releases contain very minor changes, usually bug fixes. Updating to the latest patch is always recommended. This will try to not update non-core packages unless strictly necessary.
+
+### Release Update
+
+Force update to a specific release:
+
+```bash
+meteor update --release 2.15
+```
+
+This will:
+- Force update to the specified release
+- Not update non-core packages unless strictly necessary
+- May cause some packages to become incompatible
+
+### Packages Only
+
+Update packages without updating the Meteor release:
+
+```bash
+meteor update --packages-only
+```
+
+This updates non-core packages to their latest versions without changing the Meteor release.
+
+### Specific Packages
+
+Update individual packages by name:
+
+```bash
+meteor update accounts-password reactive-var
+```
+
+This updates only the specified packages to their latest compatible versions.
+
+### All Packages
+
+Update all packages including indirect dependencies:
+
+```bash
+meteor update --all-packages
+```
+
+This updates:
+- All packages, including indirect dependencies
+- To their latest compatible versions
+- Subject to constraints imposed by other packages
+
+Note: Some packages might still not reach their most recent version due to compatibility constraints.
+
+## Options
+
+<ParamField path="--patch" type="boolean" default="false">
+  Update to the latest patch release only. Patch releases are minor updates with bug fixes.
+</ParamField>
+
+<ParamField path="--release" type="string">
+  Update to a specific release of Meteor
+</ParamField>
+
+<ParamField path="--packages-only" type="boolean" default="false">
+  Update package versions only, without updating the Meteor release
+</ParamField>
+
+<ParamField path="--all-packages" type="boolean" default="false">
+  Update all packages including indirect dependencies to their latest compatible versions
+</ParamField>
+
+<ParamField path="--allow-incompatible-update" type="boolean" default="false">
+  Allow packages in your project to be upgraded or downgraded to versions that are potentially incompatible with the current versions, if required to satisfy all package version constraints.
+</ParamField>
+
+## Examples
+
+Update to the latest version of everything:
+
+```bash
+meteor update
+```
+
+Update to the latest patch:
+
+```bash
+meteor update --patch
+```
+
+Update to a specific Meteor release:
+
+```bash
+meteor update --release 2.15
+```
+
+Update only packages:
+
+```bash
+meteor update --packages-only
+```
+
+Update specific packages:
+
+```bash
+meteor update accounts-base accounts-password
+```
+
+Update all packages including indirect dependencies:
+
+```bash
+meteor update --all-packages
+```
+
+Force incompatible updates:
+
+```bash
+meteor update --allow-incompatible-update
+```
+
+Update to a specific release allowing incompatible updates:
+
+```bash
+meteor update --release 3.0 --allow-incompatible-update
+```
+
+## Troubleshooting Updates
+
+If a package can't be updated, get more information by trying to add it at the target version:
+
+```bash
+meteor add <package>@<target-version>
+```
+
+This will show you which constraints are preventing the update.
+
+### Version Conflicts
+
+If you encounter version conflicts during an update:
+
+1. **Check constraints**: See what's preventing the update
+   ```bash
+   meteor add package@desired-version
+   ```
+
+2. **Allow incompatible updates**: Use if you're sure about the change
+   ```bash
+   meteor update --allow-incompatible-update
+   ```
+
+3. **Update all packages**: Sometimes updating everything together resolves conflicts
+   ```bash
+   meteor update --all-packages
+   ```
+
+4. **Update individually**: Update packages one at a time to identify conflicts
+   ```bash
+   meteor update package1
+   meteor update package2
+   ```
+
+## Understanding Update Behavior
+
+### Core vs. Non-Core Packages
+
+- **Core packages**: Bundled with Meteor releases (e.g., `meteor-base`, `mongo`, `webapp`)
+- **Non-core packages**: Community or third-party packages
+
+`meteor update` and `meteor update --patch` try not to update non-core packages unless necessary.
+
+### Constraint Solver
+
+Meteor uses a constraint solver to ensure all packages are compatible. When updating:
+
+1. It reads version constraints from `.meteor/packages`
+2. It solves for the newest compatible versions
+3. It updates `.meteor/versions` with resolved versions
+
+## What Gets Updated
+
+### Files Modified
+
+- `.meteor/release` - The Meteor release version
+- `.meteor/versions` - Exact versions of all packages
+
+These files should be committed to version control.
+
+### Files Not Modified
+
+- `.meteor/packages` - Your package list (only modified if you add/remove packages)
+
+## Best Practices
+
+1. **Test after updating**: Always test your app after updating
+2. **Update regularly**: Stay current with patches and security updates
+3. **Read release notes**: Check what changed before updating releases
+4. **Use version control**: Commit before updating so you can revert if needed
+5. **Update patches frequently**: Patch updates are safe and contain bug fixes
+
+```bash
+# Good workflow
+git commit -am "Before update"
+meteor update --patch
+meteor test --driver-package meteortesting:mocha
+git commit -am "Updated to latest patch"
+```
+
+## Checking for Updates
+
+Meteor automatically checks for updates when you run `meteor` commands. To disable this:
+
+```bash
+meteor run --no-release-check
+```

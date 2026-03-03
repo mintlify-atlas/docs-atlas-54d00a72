@@ -1,0 +1,94 @@
+---
+title: CLI Overview
+description: Overview of the Meteor command-line interface
+---
+
+The Meteor CLI is the primary tool for developing, testing, and deploying Meteor applications.
+
+## Basic Usage
+
+With no arguments, `meteor` runs the project in the current directory in local development mode:
+
+```bash
+meteor
+```
+
+You can run it from the root directory of the project or from any subdirectory.
+
+## Command Syntax
+
+```bash
+meteor [--release <release>] [--help] <command> [args]
+meteor help <command>
+meteor [--version] [--arch]
+```
+
+## Global Options
+
+<ParamField path="--release" type="string">
+  Specify the release of Meteor to use
+</ParamField>
+
+<ParamField path="--help" type="boolean">
+  Display help information
+</ParamField>
+
+<ParamField path="--version" type="boolean">
+  Print the Meteor version
+</ParamField>
+
+<ParamField path="--arch" type="boolean">
+  Print the Meteor architecture name of the host
+</ParamField>
+
+## Debugging
+
+Passing `--inspect` or `--inspect-brk` to `meteor run`, `meteor test`, or `meteor test-packages` enables debugging of the server process:
+
+```bash
+meteor run --inspect
+meteor run --inspect-brk
+meteor test --inspect-brk
+```
+
+## Bundled Commands
+
+Meteor bundles Node.js and npm by default. You can use these commands to run the same versions that Meteor uses internally:
+
+```bash
+meteor node [args]
+meteor npm [args]
+```
+
+## Installing Global npm Packages
+
+You can install global npm packages that will be available to all apps using the same version of Meteor:
+
+```bash
+meteor npm install --global <package-name>
+```
+
+Any executable programs added by this command can be invoked like `meteor node` or `meteor npm`:
+
+```bash
+meteor <command> [args]
+```
+
+Note: You may need to reinstall these commands after updating to a different version of Meteor.
+
+## Getting Help
+
+View help for any command:
+
+```bash
+meteor help <command>
+```
+
+## Core Commands
+
+- **Development**: [run](/cli/run), [debug](/cli/run#debug), [shell](/cli/run#shell)
+- **Project Management**: [create](/cli/create), [update](/cli/update)
+- **Package Management**: [add](/cli/add), [remove](/cli/remove), [list](/cli/list)
+- **Building & Deployment**: [build](/cli/build), [deploy](/cli/deploy)
+- **Testing**: [test](/cli/test), [test-packages](/cli/test)
+- **Publishing**: [publish](/cli/publish)

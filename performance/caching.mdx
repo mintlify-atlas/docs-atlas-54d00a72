@@ -1,0 +1,399 @@
+---
+title: Caching Strategies
+description: Understanding and optimizing Meteor's caching mechanisms
+---
+
+# Caching Strategies
+
+Meteor uses multiple layers of caching to optimize build performance and rebuild times. Understanding these caches helps you troubleshoot issues and optimize your development workflow.
+
+## Cache Locations
+
+Meteor maintains several disk caches:
+
+### Application Caches
+
+**`APP/.meteor/local/isopacks`**
+- Built packages and plugins
+- Local package compilation cache
+- Core packages in checked-out mode
+
+**`APP/.meteor/local/bundler-cache`**
+- Linker output cache
+- Compiler plugin results
+- File processing cache
+
+**`APP/.meteor/local/plugin-cache`**
+- Build plugin cache
+- Plugin-specific compilation results
+
+**Important**: Don't remove `APP/.meteor/local` if you have data in your app's database. The local MongoDB resides in `APP/.meteor/local/db`.
+
+### Global Caches
+
+**`~/.meteor`** (Release mode)
+- Package storage when running a release
+- Downloaded Atmosphere packages
+- Similar to Maven's `.m2`
+
+**`REPO/.meteor`** (Checkout mode)
+- Package storage when running checked-out branch
+- Development package storage
+
+### Rspack Caches
+
+When using Rspack integration:
+
+**`_build/`**
+- Rspack entry points
+- Intermediate Rspack app bundles
+- Environment-specific contexts (dev/prod, client/server)
+
+**`public/build-assets/`** and **`private/build-assets/`**
+- Assets built by Rspack
+- Packed into final Meteor app
+
+**`public/build-chunks/`**
+- Code-split chunks from dynamic imports
+- CSS generation output
+- Chunk processing results
+
+These folders are:
+- Automatically prepared and cleared
+- Added to `.gitignore` when using Git
+- Should not be modified directly
+- Excluded from IDE analysis (recommended)
+
+## Cache Types
+
+### Built Package Cache
+
+Caches compiled packages to avoid recompilation:
+
+- **Location**: `APP/.meteor/local/isopacks`
+- **Contains**: Transpiled package code, build artifacts
+- **Invalidated**: When package source changes or version updates
+
+### Compiler Plugin Cache
+
+Caches results from build plugins:
+
+- **Location**: `APP/.meteor/local/plugin-cache`
+- **Contains**: Processed file outputs
+- **Key feature**: Caches multiple versions of files
+- **Benefit**: Toggling code back/forth may hit cache
+
+### Linker Cache
+
+Caches linker output:
+
+- **Location**: `APP/.meteor/local/bundler-cache/linker`
+- **Contains**: Large linked bundle files
+- **Issue**: Very large files can take seconds to write
+- **Note**: Files are not automatically cleaned up
+
+### Server Program Cache
+
+Caches entire server program for client-only changes:
+
+- **Benefit**: Client changes don't trigger server rebuild
+- **Result**: Faster rebuilds for UI development
+
+### Constraint Solver Cache
+
+Caches package version resolution:
+
+- **Location**: `APP/.meteor/versions`
+- **Benefit**: Avoids re-solving constraints on every run
+- **Optimization**: Previous solution checked without invoking solver
+
+## Rspack Cache Configuration
+
+Rspack provides an additional cache layer for app code.
+
+### Persistent Cache (Default)
+
+Enabled by default for faster rebuilds:
+
+```javascript
+// rspack.config.js - No config needed, enabled by default
+```
+
+### Disable Persistent Cache
+
+For troubleshooting or memory constraints:
+
+```javascript
+// rspack.config.js
+const { defineConfig } = require('@meteorjs/rspack');
+
+module.exports = defineConfig(Meteor => ({
+  ...Meteor.setCache(false),
+}));
+```
+
+### Memory Cache
+
+Use in-memory cache instead of persistent:
+
+```javascript
+// rspack.config.js
+module.exports = defineConfig(Meteor => ({
+  ...Meteor.setCache('memory'),
+}));
+```
+
+**Trade-offs:**
+- Persistent cache: Faster across restarts, uses disk space
+- Memory cache: Faster during session, lost on restart
+- No cache: Slowest, but no cache issues
+
+## Cache Behavior
+
+### Cold vs Warm Cache
+
+**Cold Cache (First Run)**
+- All packages need compilation
+- Constraint solver runs
+- Plugins build from scratch
+- Slowest build time
+
+**Warm Cache (Subsequent Runs)**
+- Packages loaded from cache
+- Incremental compilation only
+- Constraint solver results reused
+- Significantly faster
+
+**Second Rebuild**
+- Even faster than first rebuild
+- All caches fully populated
+- Optimal performance level
+
+### Cache Invalidation
+
+Caches are invalidated when:
+
+1. **Package version changes**
+2. **Source files modified**
+3. **Meteor version updated**
+4. **Build plugin changes**
+5. **Configuration changes** (.swcrc, rspack.config.js)
+
+### Release vs Checkout Differences
+
+**Release Mode:**
+- Uses `~/.meteor` for packages
+- Core packages pre-built
+- Faster startup
+- Stable constraint solving
+
+**Checkout Mode:**
+- Uses `REPO/.meteor` for packages
+- Recompiles core packages into `APP/.meteor/local/isopacks`
+- Slower initial build
+- More files watched
+- Useful for development
+
+## Cache Optimization
+
+### Clear Specific Caches
+
+**Clear all caches (preserves database):**
+```bash
+rm -rf .meteor/local/isopacks
+rm -rf .meteor/local/bundler-cache
+rm -rf .meteor/local/plugin-cache
+rm -rf _build
+```
+
+**Clear everything (including database):**
+```bash
+meteor reset
+```
+
+Or:
+```bash
+rm -rf .meteor/local
+```
+
+**Clear Rspack cache:**
+```bash
+rm -rf _build
+rm -rf public/build-assets public/build-chunks
+rm -rf private/build-assets
+```
+
+### Plugin Cache Management
+
+Plugin caches are stored per package and version:
+
+**Structure:**
+```
+<pluginCacheDirRoot>/<escapedPackageName>/<version>
+```
+
+**Version:**
+- Package version for versioned packages
+- "local" for local packages (emptied on rebuild)
+
+### Optimize Cache Usage
+
+1. **Use entry points** - Reduces files scanned and cached
+2. **Use .meteorignore** - Excludes files from watch and cache
+3. **Minimize local packages** - More packages = more cache overhead
+4. **Pin package versions** - Maintains `APP/.meteor/versions`
+5. **Enable Rspack cache** - Additional speed for app code
+
+## Cache Troubleshooting
+
+### Stale Cache Issues
+
+**Symptoms:**
+- Old code still running after changes
+- Build errors that don't make sense
+- Missing dependencies
+
+**Solution:**
+```bash
+meteor reset
+```
+
+Or selectively clear caches as shown above.
+
+### Large Cache Size
+
+**Symptoms:**
+- `.meteor/local` directory very large
+- Slow builds despite caching
+- Disk space issues
+
+**Solutions:**
+1. Remove old projects' caches
+2. Clear `bundler-cache/linker` periodically
+3. Use `meteor reset` on old projects
+
+### Rspack Cache Issues
+
+**Symptoms:**
+- Memory crashes during builds
+- Inconsistent build results
+- Cache-related errors
+
+**Solutions:**
+
+1. **Increase memory:**
+```bash
+NODE_OPTIONS="--max-old-space-size=16384" meteor run
+```
+
+2. **Disable persistent cache:**
+```javascript
+// rspack.config.js
+module.exports = defineConfig(Meteor => ({
+  ...Meteor.setCache(false),
+}));
+```
+
+3. **Use memory cache:**
+```javascript
+// rspack.config.js
+module.exports = defineConfig(Meteor => ({
+  ...Meteor.setCache('memory'),
+}));
+```
+
+### Cache in CI/CD
+
+**Docker Builds:**
+
+Cache `.meteor/local` between builds:
+
+```dockerfile
+# Create volume for cache
+VOLUME /app/.meteor/local/isopacks
+VOLUME /app/.meteor/local/bundler-cache
+```
+
+Or use multi-stage builds:
+
+```dockerfile
+FROM meteor-base AS build
+COPY --from=cache /app/.meteor/local /app/.meteor/local
+RUN meteor build --directory /output
+```
+
+**CI Systems:**
+
+Cache directories between runs:
+
+```yaml
+# GitHub Actions example
+- uses: actions/cache@v3
+  with:
+    path: |
+      .meteor/local/isopacks
+      .meteor/local/bundler-cache
+    key: ${{ runner.os }}-meteor-${{ hashFiles('**/versions') }}
+```
+
+## Performance Considerations
+
+### Cache Impact on Performance
+
+**Disk Caches:**
+- SSDs: Minimal impact, fast read/write
+- HDDs: Significant impact, slower I/O
+
+**Memory Caches:**
+- Fast access during development
+- Lost on restart
+- Requires adequate RAM
+
+**Network Caches:**
+- Package server downloads
+- Can take 5+ seconds
+- Consider local package mirror
+
+### Monitoring Cache Performance
+
+Use profiling to see cache impact:
+
+```bash
+METEOR_PROFILE=100 meteor run
+```
+
+Watch for:
+- `_initializeCatalog` - Package cache loading
+- `_resolveConstraints` - Constraint solver cache
+- `bundler.readJsImage` - Compiled package cache
+
+## Best Practices
+
+1. **Don't commit caches** - Add to `.gitignore`:
+   ```gitignore
+   .meteor/local/
+   _build/
+   public/build-assets/
+   public/build-chunks/
+   private/build-assets/
+   ```
+
+2. **Use meteor reset sparingly** - Clears all caches and database
+
+3. **Clear caches when troubleshooting** - Often fixes mysterious issues
+
+4. **Cache in CI/CD** - Speeds up build pipelines
+
+5. **Monitor cache size** - Prevent disk space issues
+
+6. **Use Rspack cache wisely** - Balance speed vs memory usage
+
+7. **Understand cache layers** - Know which cache to clear for issues
+
+8. **Pin dependencies** - Maintains stable cache keys
+
+## Related Topics
+
+- [Performance Optimization](/performance/optimization)
+- [Bundle Size Optimization](/performance/bundle-size)
+- [Performance Profiling](/performance/profiling)

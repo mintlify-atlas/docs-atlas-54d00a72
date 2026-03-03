@@ -1,0 +1,186 @@
+---
+title: Deployment Overview
+description: Learn about deploying Meteor applications to production environments
+---
+
+Once you've built and tested your Meteor application, you need to put it online to show it to the world. Deploying a Meteor application is similar to deploying any other websocket-based Node.js app, but is different in some of the specifics.
+
+Deploying a web application is fundamentally different from releasing most other kinds of software, in that you can deploy as often as you'd like to. You don't need to wait for users to do something to get the new version of your software because the server will push it right at them.
+
+<Warning>
+Never use `--production` flag to deploy! The `--production` flag is purely meant to simulate production minification, but does almost nothing else. This still watches source code files, exchanges data with package server and does a lot more than just running the app, leading to unnecessary computing resource wasting and security issues.
+</Warning>
+
+## Deployment Environments
+
+In web application deployment it's common to refer to three runtime environments:
+
+1. **Development** - Your machine where you develop new features and run local tests
+2. **Staging** - An intermediate environment that is similar to production, but not visible to users. Can be used for testing and QA
+3. **Production** - The real deployment of your app that your customers are currently using
+
+The idea of the staging environment is to provide a non-user-visible test environment that is as close as possible to production in terms of infrastructure. It's common for issues to appear with new code on the production infrastructure that don't happen in a development environment.
+
+## Configuration
+
+There are two main ways to configure your application outside of the code:
+
+### Environment Variables
+
+This is the set of `ENV_VARS` that are set on the running process. Key environment variables include:
+
+- `ROOT_URL` - The base URL for your Meteor project (e.g., `https://my-app.com`)
+- `MONGO_URL` - MongoDB connection string URI
+- `PORT` - The port at which the application is running
+- `DEPLOY_HOSTNAME` - Galaxy deployment region (e.g., `us-east-1.galaxy.meteor.com`)
+
+### Settings
+
+These are in a JSON object set via either the `--settings` Meteor command-line flag or stringified into the `METEOR_SETTINGS` environment variable.
+
+Settings should be used to set environment-specific things, like access tokens and secrets used to connect to third-party services. These settings will not change between any given process running your application in the given environment.
+
+<Warning>
+It's not a good idea to store settings in the same repository where you keep your app code. Read about good places to put your settings in the Security article.
+</Warning>
+
+## Pre-Deployment Checklist
+
+<Steps>
+  <Step title="Domain Name">
+    Register a domain name with a domain registrar and setup DNS entries to point to your deployment.
+  </Step>
+  
+  <Step title="SSL Certificate">
+    It's always a good idea to use SSL for Meteor applications. Many hosting providers offer free SSL certificates through Let's Encrypt.
+  </Step>
+  
+  <Step title="MongoDB Database">
+    Set up a MongoDB database either through a hosted service (recommended) or self-hosted.
+  </Step>
+  
+  <Step title="CDN (Optional)">
+    Consider setting up a Content Delivery Network for your static assets to improve performance globally.
+  </Step>
+</Steps>
+
+## Deployment Options
+
+Meteor is an open source platform, and you can run the apps that you make with Meteor anywhere just like regular Node.js applications. Choose the deployment method that best fits your needs:
+
+- **[Galaxy Cloud](/deployment/galaxy)** - Recommended managed hosting service built specifically for Meteor
+- **[Docker](/deployment/docker)** - Container-based deployment for orchestration platforms
+- **[Custom Deployment](/deployment/custom)** - Manual deployment using `meteor build`
+
+## MongoDB Options
+
+When you deploy your Meteor server, you need a `MONGO_URL` that points to your MongoDB database.
+
+### Hosted Service (Recommended)
+
+There are a variety of services available:
+
+- [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) - The official MongoDB cloud service
+- [DigitalOcean Managed Databases](https://www.digitalocean.com/products/managed-databases-mongodb)
+- [AWS DocumentDB](https://aws.amazon.com/documentdb/) - MongoDB compatible
+
+When selecting a hosted MongoDB service for production, consider:
+
+- Supports the MongoDB version you wish to run
+- Storage Engine Support (WiredTiger is default since Meteor 1.4)
+- Support for Replica Sets & Oplog tailing
+- Monitoring & Automated alerting
+- Continuous backups & Automated snapshots
+- Access Control, IP whitelisting, and VPC Peering
+- Encryption of data in-flight and at-rest
+- Cost and pricing granularity
+- Instance size & options
+
+### Self-Hosted
+
+You can install MongoDB on your own server. For the best performance, choose a server with an SSD large enough to fit your data and with enough RAM to fit the working set (indexes + active documents) in memory.
+
+## Deployment Process
+
+A typical release process looks like:
+
+<Steps>
+  <Step title="Deploy to Staging">
+    Deploy the new version of the application to your staging server.
+  </Step>
+  
+  <Step title="QA Testing">
+    QA the application on the staging server thoroughly.
+  </Step>
+  
+  <Step title="Fix Issues">
+    Fix any bugs found during testing and repeat the deployment to staging.
+  </Step>
+  
+  <Step title="Deploy to Production">
+    Once you are satisfied with the staging release, release the exact same version to production.
+  </Step>
+  
+  <Step title="Final QA">
+    Run final QA on production to ensure everything works as expected.
+  </Step>
+</Steps>
+
+## Continuous Deployment
+
+Continuous deployment refers to the process of deploying an application via a continuous integration tool, usually when some condition is reached (such as a git push to the `main` branch).
+
+Here's an example GitHub Actions workflow for deploying to Galaxy:
+
+```yaml
+name: Deploy to Galaxy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Meteor
+        run: curl https://install.meteor.com/ | sh
+
+      - name: Deploy to Galaxy
+        env:
+          METEOR_SESSION_FILE: ${{ secrets.METEOR_SESSION_FILE }}
+        run: |
+          echo "$METEOR_SESSION_FILE" > meteor-session.json
+          METEOR_SESSION_FILE=meteor-session.json \
+          DEPLOY_HOSTNAME=us-east-1.galaxy.meteor.com \
+          meteor deploy your-app.com --settings settings.json
+```
+
+## Rolling Deployments
+
+When running your app on multiple servers or containers, it's not a good idea to shut down all of the servers at once and then start them all back up again. Modern hosting platforms stop and re-start containers one by one during deployment.
+
+If the new version involves different data formats in the database, then you need to be careful about how you step through versions to ensure that all the versions that are running simultaneously can work together.
+
+## Next Steps
+
+Choose your deployment method to get started:
+
+<CardGroup cols={2}>
+  <Card title="Galaxy Cloud" icon="cloud" href="/deployment/galaxy">
+    Deploy to Galaxy, the recommended managed hosting service
+  </Card>
+  <Card title="Docker Deployment" icon="docker" href="/deployment/docker">
+    Deploy using Docker containers
+  </Card>
+  <Card title="Custom Deployment" icon="server" href="/deployment/custom">
+    Deploy manually using meteor build
+  </Card>
+</CardGroup>

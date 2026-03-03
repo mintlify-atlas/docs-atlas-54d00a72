@@ -1,0 +1,183 @@
+---
+title: meteor build
+description: Build your Meteor application for deployment
+---
+
+The `meteor build` command packages your Meteor project for deployment, creating builds for all configured platforms.
+
+## Usage
+
+```bash
+meteor build <output-path> [options]
+```
+
+## Basic Usage
+
+Build your app for deployment:
+
+```bash
+meteor build ../output
+```
+
+This creates a directory with builds for all platforms in your project.
+
+## Output
+
+The command outputs:
+
+- A tarball containing everything necessary to run the application server (see README in the tarball for details)
+- If you've added mobile platforms with `meteor add-platform`:
+  - `android/` subdirectory with the AAB/APK bundle and Android project source
+  - `ios/` subdirectory with the Xcode project source (macOS only)
+
+## Options
+
+<ParamField path="--debug" type="boolean" default="false">
+  Build in debug mode (don't minify, etc)
+</ParamField>
+
+<ParamField path="--directory" type="boolean" default="false">
+  Output a directory (rather than a tarball) for the application server bundle. If the output location exists, it will be recursively deleted first.
+</ParamField>
+
+<ParamField path="--server-only" type="boolean" default="false">
+  Skip building mobile apps even if mobile platforms have been added. Still builds the 'web.cordova' client target so the server can support hot code push for Cordova apps.
+</ParamField>
+
+<ParamField path="--mobile-settings" type="string">
+  Set optional data for the initial value of Meteor.settings in your mobile application. A new value for Meteor.settings can be set later by the server as part of hot code push. Provide a path to a JSON file.
+</ParamField>
+
+<ParamField path="--server" type="string">
+  Location where mobile builds connect to the Meteor server. Defaults to localhost:3000. Can include a URL scheme (e.g., `--server=https://example.com:443`).
+</ParamField>
+
+<ParamField path="--architecture" type="string">
+  Build the server for a different architecture than your developer machine's architecture. Valid architectures include:
+  - `os.osx.x86_64`
+  - `os.linux.x86_64`
+  - `os.linux.x86_32`
+  - `os.windows.x86_32`
+  - `os.windows.x86_64`
+  
+  Note: This option selects the architecture of binary-dependent Atmosphere packages you would like bundled. If your project doesn't use any Atmosphere packages with binary dependencies, `--architecture` has no effect.
+</ParamField>
+
+<ParamField path="--allow-incompatible-update" type="boolean" default="false">
+  Allow packages in your project to be upgraded or downgraded to versions that are potentially incompatible with the current versions, if required to satisfy all package version constraints.
+</ParamField>
+
+<ParamField path="--platforms" type="string">
+  Build only the specified platforms (when available). Comma-separated list.
+</ParamField>
+
+<ParamField path="--packageType" type="string" default="bundle">
+  Choose between `apk` or `bundle` for Android builds
+</ParamField>
+
+<ParamField path="--verbose" type="boolean" default="false">
+  Print detailed build output
+</ParamField>
+
+<ParamField path="--headless" type="boolean" default="false">
+  Run in headless mode (no progress indicators), useful for CI environments
+</ParamField>
+
+<ParamField path="--cordova-server-port" type="string">
+  Specify the Cordova server port
+</ParamField>
+
+## Examples
+
+Build for production deployment:
+
+```bash
+meteor build ../output
+```
+
+Build in debug mode:
+
+```bash
+meteor build ../output --debug
+```
+
+Build as a directory instead of tarball:
+
+```bash
+meteor build ../output --directory
+```
+
+Build server only (skip mobile apps):
+
+```bash
+meteor build ../output --server-only
+```
+
+Build with mobile settings:
+
+```bash
+meteor build ../output --mobile-settings settings.json --server https://example.com
+```
+
+Build for a specific architecture:
+
+```bash
+meteor build ../output --architecture os.linux.x86_64
+```
+
+Build only Android:
+
+```bash
+meteor build ../output --platforms android
+```
+
+Build Android APK instead of bundle:
+
+```bash
+meteor build ../output --packageType apk
+```
+
+Build in headless mode for CI:
+
+```bash
+meteor build ../output --headless
+```
+
+## Mobile Builds
+
+For mobile builds, you must specify the server URL using the `--server` option:
+
+```bash
+meteor build ../output --server https://myapp.com
+```
+
+This tells the mobile app where to connect to your Meteor server.
+
+## Deployment
+
+After building, the output directory will contain:
+
+- `<app-name>.tar.gz` - Server bundle (or a `bundle/` directory if using `--directory`)
+- `android/` - Android build artifacts (if Android platform added)
+- `ios/` - iOS project (if iOS platform added, macOS only)
+
+To deploy the server bundle:
+
+1. Extract the tarball on your server
+2. Read the README file in the bundle for deployment instructions
+3. Set up environment variables (MONGO_URL, ROOT_URL, etc.)
+4. Run `node main.js`
+
+See the [Deployment Guide](https://guide.meteor.com/deployment.html) for more details.
+
+## Deprecated: bundle Command
+
+The `meteor bundle` command is deprecated in favor of `meteor build`:
+
+```bash
+# Deprecated
+meteor bundle output.tar.gz
+
+# Use instead
+meteor build ../output
+```

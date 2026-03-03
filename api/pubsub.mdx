@@ -1,0 +1,454 @@
+---
+title: 'Publish/Subscribe'
+description: 'Real-time data synchronization with publications and subscriptions'
+---
+
+# Publish/Subscribe API
+
+Meteor's pub/sub system controls which data is sent from the server to the client.
+
+Source: `packages/ddp-server/livedata_server.js`, `packages/ddp-client/`
+
+## Publications (Server)
+
+### Meteor.publish()
+
+Publish a record set to clients.
+
+**Locus:** Server
+
+<ParamField body="name" type="string | null" required>
+  Name of the record set. If `null`, the set has no name and the record set is automatically sent to all connected clients.
+</ParamField>
+
+<ParamField body="func" type="function" required>
+  Function called on the server each time a client subscribes. Inside the function, `this` is the publish handler object.
+</ParamField>
+
+```javascript
+import { Meteor } from 'meteor/meteor';
+import { Tasks } from '/imports/api/tasks';
+
+// Publish all tasks for logged-in user
+Meteor.publish('tasks', function() {
+  if (!this.userId) {
+    return this.ready();
+  }
+  
+  return Tasks.find({ owner: this.userId });
+});
+
+// Publish with parameters
+Meteor.publish('tasks.byList', function(listId) {
+  check(listId, String);
+  
+  if (!this.userId) {
+    return this.ready();
+  }
+  
+  return Tasks.find({ 
+    listId,
+    owner: this.userId 
+  });
+});
+
+// Publish multiple cursors
+Meteor.publish('tasksWithUsers', function() {
+  if (!this.userId) {
+    return this.ready();
+  }
+  
+  return [
+    Tasks.find({ owner: this.userId }),
+    Meteor.users.find(
+      { _id: this.userId },
+      { fields: { profile: 1, username: 1 } }
+    )
+  ];
+});
+```
+
+### Universal Publications (null)
+
+Publications with `null` name are sent to all clients automatically:
+
+```javascript
+// Auto-publish to all clients
+Meteor.publish(null, function() {
+  return PublicData.find();
+});
+```
+
+### Custom Publications
+
+For advanced use cases, manually control published data:
+
+```javascript
+Meteor.publish('customPublication', function() {
+  const self = this;
+  
+  // Add a document
+  self.added('collectionName', 'documentId', {
+    field1: 'value1',
+    field2: 'value2'
+  });
+  
+  // Change a document
+  self.changed('collectionName', 'documentId', {
+    field1: 'newValue'
+  });
+  
+  // Remove a document
+  self.removed('collectionName', 'documentId');
+  
+  // Signal ready
+  self.ready();
+  
+  // Cleanup when subscription stops
+  self.onStop(() => {
+    console.log('Subscription stopped');
+  });
+});
+```
+
+## Publication Context (this)
+
+Inside a publish function, `this` provides:
+
+<ResponseField name="userId" type="string">
+  The id of the logged-in user, or `null` if no user is logged in.
+</ResponseField>
+
+<ResponseField name="connection" type="object">
+  The connection object for this subscription.
+</ResponseField>
+
+<ResponseField name="ready" type="function">
+  Call when the initial snapshot is complete. Triggers `onReady` callback on client.
+</ResponseField>
+
+<ResponseField name="onStop" type="function">
+  Register a callback to run when the subscription is stopped.
+</ResponseField>
+
+<ResponseField name="error" type="function">
+  Stop this subscription and signal an error to the client.
+</ResponseField>
+
+<ResponseField name="stop" type="function">
+  Stop this subscription.
+</ResponseField>
+
+<ResponseField name="added" type="function">
+  Inform the subscriber that a document has been added.
+</ResponseField>
+
+<ResponseField name="changed" type="function">
+  Inform the subscriber that a document has been modified.
+</ResponseField>
+
+<ResponseField name="removed" type="function">
+  Inform the subscriber that a document has been removed.
+</ResponseField>
+
+```javascript
+Meteor.publish('tasks', function(listId) {
+  // Access user ID
+  console.log('User:', this.userId);
+  
+  // Access connection
+  console.log('Connection:', this.connection.id);
+  
+  // Error handling
+  if (!listId) {
+    this.error(new Meteor.Error('invalid-params', 'listId is required'));
+    return;
+  }
+  
+  // Cleanup on stop
+  this.onStop(() => {
+    console.log('Subscription stopped for user:', this.userId);
+  });
+  
+  return Tasks.find({ listId, owner: this.userId });
+});
+```
+
+## Subscriptions (Client)
+
+### Meteor.subscribe()
+
+Subscribe to a record set. Returns a handle that provides `stop()` and `ready()` methods.
+
+**Locus:** Client
+
+<ParamField body="name" type="string" required>
+  Name of the subscription. Matches the name of the server's `publish()` call.
+</ParamField>
+
+<ParamField body="...args" type="any">
+  Optional arguments passed to publisher function on server.
+</ParamField>
+
+<ParamField body="callbacks" type="object | function">
+  Optional. May include `onStop` and `onReady` callbacks. If a function is passed instead of an object, it is interpreted as an `onReady` callback.
+</ParamField>
+
+```javascript
+// Basic subscription
+const handle = Meteor.subscribe('tasks');
+
+// With parameters
+Meteor.subscribe('tasks.byList', listId);
+
+// With callbacks
+Meteor.subscribe('tasks', {
+  onReady() {
+    console.log('Subscription ready');
+  },
+  onStop(error) {
+    if (error) {
+      console.error('Subscription error:', error);
+    } else {
+      console.log('Subscription stopped');
+    }
+  }
+});
+
+// With onReady callback shorthand
+Meteor.subscribe('tasks', () => {
+  console.log('Tasks loaded');
+});
+```
+
+### Subscription Handle
+
+The object returned by `Meteor.subscribe()` has these methods:
+
+#### handle.stop()
+
+Stop this subscription.
+
+```javascript
+const handle = Meteor.subscribe('tasks');
+
+// Later, stop the subscription
+handle.stop();
+```
+
+#### handle.ready()
+
+True if the server has marked the subscription as ready. A reactive data source.
+
+```javascript
+const handle = Meteor.subscribe('tasks');
+
+if (handle.ready()) {
+  console.log('Data is loaded');
+}
+
+// Reactive usage
+Tracker.autorun(() => {
+  if (handle.ready()) {
+    console.log('Subscription ready');
+  }
+});
+```
+
+#### handle.subscriptionId
+
+The subscription ID.
+
+```javascript
+const handle = Meteor.subscribe('tasks');
+console.log('Subscription ID:', handle.subscriptionId);
+```
+
+## Reactive Subscriptions
+
+Subscriptions in `Tracker.autorun` automatically resubscribe when dependencies change:
+
+```javascript
+import { ReactiveVar } from 'meteor/reactive-var';
+
+const currentListId = new ReactiveVar('list-1');
+
+Tracker.autorun(() => {
+  const listId = currentListId.get();
+  Meteor.subscribe('tasks.byList', listId);
+});
+
+// Change the list - automatically resubscribes
+currentListId.set('list-2');
+```
+
+## Template Subscriptions
+
+With Blaze templates:
+
+```javascript
+Template.taskList.onCreated(function() {
+  // Automatic cleanup when template is destroyed
+  this.subscribe('tasks');
+  
+  // With parameters from template data
+  this.autorun(() => {
+    const listId = Template.currentData().listId;
+    this.subscribe('tasks.byList', listId);
+  });
+});
+
+Template.taskList.helpers({
+  tasks() {
+    return Tasks.find();
+  },
+  
+  isLoading() {
+    return !Template.instance().subscriptionsReady();
+  }
+});
+```
+
+## Publication Strategies (Server)
+
+Optimize performance by choosing different merge strategies:
+
+```javascript
+import { DDPServer } from 'meteor/ddp-server';
+
+// Available strategies
+const strategies = DDPServer.publicationStrategies;
+
+// SERVER_MERGE (default) - Full merging and diffing
+Meteor.server.setPublicationStrategy(
+  'tasks',
+  strategies.SERVER_MERGE
+);
+
+// NO_MERGE - No merging, better performance for single publication
+Meteor.server.setPublicationStrategy(
+  'realtime-data',
+  strategies.NO_MERGE
+);
+
+// NO_MERGE_MULTI - Track document usage across publications
+Meteor.server.setPublicationStrategy(
+  'messages',
+  strategies.NO_MERGE_MULTI
+);
+
+// NO_MERGE_NO_HISTORY - Fire and forget, no tracking
+Meteor.server.setPublicationStrategy(
+  'notifications',
+  strategies.NO_MERGE_NO_HISTORY
+);
+```
+
+## Security
+
+Never publish sensitive data:
+
+```javascript
+// BAD - Publishes everything
+Meteor.publish('tasks', function() {
+  return Tasks.find();
+});
+
+// GOOD - Filter by owner
+Meteor.publish('tasks', function() {
+  if (!this.userId) {
+    return this.ready();
+  }
+  return Tasks.find({ owner: this.userId });
+});
+
+// GOOD - Limit fields
+Meteor.publish('userProfile', function() {
+  if (!this.userId) {
+    return this.ready();
+  }
+  
+  return Meteor.users.find(
+    { _id: this.userId },
+    { fields: { 
+      profile: 1,
+      username: 1,
+      emails: 1
+      // Don't publish services, roles, etc.
+    }}
+  );
+});
+```
+
+## Complete Example
+
+```javascript
+// Server: imports/api/tasks/publications.js
+import { Meteor } from 'meteor/meteor';
+import { check } from 'meteor/check';
+import { Tasks } from './tasks';
+
+// All tasks for current user
+Meteor.publish('tasks', function() {
+  if (!this.userId) {
+    return this.ready();
+  }
+  
+  return Tasks.find({ 
+    owner: this.userId 
+  }, {
+    sort: { createdAt: -1 },
+    limit: 100
+  });
+});
+
+// Tasks for specific list
+Meteor.publish('tasks.inList', function(listId) {
+  check(listId, String);
+  
+  if (!this.userId) {
+    return this.ready();
+  }
+  
+  // Verify user has access to list
+  const list = Lists.findOne({
+    _id: listId,
+    $or: [
+      { owner: this.userId },
+      { members: this.userId }
+    ]
+  });
+  
+  if (!list) {
+    return this.ready();
+  }
+  
+  return Tasks.find({ listId });
+});
+
+// Client: Template subscription
+Template.taskList.onCreated(function() {
+  this.autorun(() => {
+    const listId = FlowRouter.getParam('listId');
+    if (listId) {
+      this.subscribe('tasks.inList', listId);
+    } else {
+      this.subscribe('tasks');
+    }
+  });
+});
+
+Template.taskList.helpers({
+  tasks() {
+    const listId = FlowRouter.getParam('listId');
+    if (listId) {
+      return Tasks.find({ listId });
+    }
+    return Tasks.find();
+  },
+  
+  loading() {
+    return !Template.instance().subscriptionsReady();
+  }
+});
+```

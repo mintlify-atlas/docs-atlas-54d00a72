@@ -1,0 +1,391 @@
+---
+title: Bundle Size Optimization
+description: Techniques for reducing Meteor application bundle size
+---
+
+# Bundle Size Optimization
+
+Reducing bundle size improves load times, reduces bandwidth usage, and enhances user experience. This guide covers real techniques for optimizing bundle size in Meteor applications.
+
+## Bundle Visualization
+
+The `bundle-visualizer` package provides visual representation of what's included in the initial client bundle.
+
+### Usage
+
+Run with production flag to enable minification:
+
+```bash
+meteor --extra-packages bundle-visualizer --production
+```
+
+View at `http://localhost:3000/` to see the bundle visualization chart.
+
+### What It Shows
+
+- Files and packages in the initial client bundle
+- Space occupied by each dependency
+- Candidates for dynamic `import()` conversion
+- Inadvertently included packages
+
+### Requirements
+
+- Uses `<hash>.stats.json` files from production builds
+- Requires `standard-minifier-js` or compatible minifier
+- Must run with `--production` flag
+
+**Important**: Only add temporarily using `--extra-packages`. Do not deploy to production with this package.
+
+## Tree Shaking with Rspack
+
+Rspack enables tree shaking to eliminate dead code:
+
+```bash
+meteor add rspack
+```
+
+Tree shaking automatically removes unused exports, significantly reducing bundle size.
+
+### Requirements for Tree Shaking
+
+1. Use ES modules (import/export)
+2. Avoid CommonJS where possible
+3. Enable production mode for minification
+
+## Code Splitting
+
+### Dynamic Imports
+
+Convert static imports to dynamic `import()` for code splitting:
+
+**Before:**
+```javascript
+import HeavyComponent from './HeavyComponent';
+```
+
+**After:**
+```javascript
+const HeavyComponent = React.lazy(() => import('./HeavyComponent'));
+```
+
+Dynamic imports are excluded from the initial client bundle.
+
+### Split Vendor Chunks
+
+Prevent duplicating libraries across async chunks:
+
+```javascript
+// rspack.config.js
+const { defineConfig } = require('@meteorjs/rspack');
+
+module.exports = defineConfig(Meteor => ({
+  ...Meteor.splitVendorChunk(),
+}));
+```
+
+This separates `node_modules` into a stable `vendor` chunk.
+
+### Advanced Split Chunks
+
+For more control, use Rspack's split chunks configuration:
+
+```javascript
+// rspack.config.js
+module.exports = defineConfig(Meteor => ({
+  optimization: {
+    splitChunks: {
+      chunks: 'all',
+      cacheGroups: {
+        vendor: {
+          test: /[\\/]node_modules[\\/]/,
+          name: 'vendor',
+          priority: 10,
+        },
+        common: {
+          minChunks: 2,
+          priority: 5,
+          reuseExistingChunk: true,
+        },
+      },
+    },
+  },
+}));
+```
+
+## Externalize SWC Helpers
+
+SWC inlines transformation helpers in every file by default, leading to code duplication.
+
+### Install @swc/helpers
+
+```bash
+meteor npm install --save @swc/helpers
+```
+
+Meteor automatically externalizes helpers, shipping each helper only once instead of inlining them.
+
+**Result**: Reduced bundle size from eliminated helper duplication.
+
+## Transform Imports
+
+Rewrite imports to avoid full-package imports:
+
+### Install SWC Plugin
+
+```bash
+meteor npm install -D @swc/plugin-transform-imports
+```
+
+### Configure .swcrc
+
+```json
+{
+  "jsc": {
+    "experimental": {
+      "plugins": [
+        [
+          "@swc/plugin-transform-imports",
+          {
+            "lodash": {
+              "transform": "lodash/{{member}}",
+              "preventFullImport": true
+            }
+          }
+        ]
+      ]
+    }
+  }
+}
+```
+
+**Before:**
+```javascript
+import { map } from "lodash"
+```
+
+**After:**
+```javascript
+import map from "lodash/map"
+```
+
+This avoids importing the entire package, reducing bundle size.
+
+## Delegating Dependencies
+
+### Compile Modern Packages with Rspack
+
+Force Rspack to handle modern npm dependencies:
+
+```javascript
+// rspack.config.js
+const { defineConfig } = require('@meteorjs/rspack');
+
+module.exports = defineConfig(Meteor => ({
+  // Force-compile modern packages via SWC
+  ...Meteor.compileWithRspack(['grubba-rpc']),
+  // Force-compile with ES5 target
+  ...Meteor.compileWithRspack(['zod'], { jsc: { target: 'es5' } }),
+}));
+```
+
+### Externalize Native Modules
+
+Exclude native/binary code from the bundle:
+
+```javascript
+// rspack.config.js
+module.exports = defineConfig(Meteor => ({
+  ...(Meteor.isServer ? Meteor.compileWithMeteor(['sharp']) : {}),
+}));
+```
+
+This marks dependencies as externals, handled by Meteor/Node at runtime instead of bundled.
+
+## CSS Optimization
+
+### Use CSS Loaders
+
+Process CSS with Rspack for automatic optimization:
+
+```javascript
+// Import CSS in app code
+import './styles/main.css';
+```
+
+Rspack automatically:
+- Minifies CSS in production
+- Removes unused styles
+- Generates optimized CSS bundles
+
+### Less/SCSS Optimization
+
+Replace Meteor Less/SCSS packages with Rspack loaders:
+
+**Less:**
+```bash
+npm i -D less less-loader
+```
+
+```javascript
+// rspack.config.js
+module.exports = defineConfig(Meteor => ({
+  module: {
+    rules: [
+      {
+        test: /\.less$/,
+        use: [{ loader: 'less-loader' }],
+        type: 'css/auto',
+      },
+    ],
+  },
+}));
+```
+
+**SCSS:**
+```bash
+npm i -D sass-embedded sass-loader
+```
+
+```javascript
+// rspack.config.js
+module.exports = defineConfig(Meteor => ({
+  module: {
+    rules: [
+      {
+        test: /\.scss$/i,
+        use: [
+          {
+            loader: 'sass-loader',
+            options: {
+              api: 'modern-compiler',
+              implementation: require.resolve('sass-embedded'),
+            },
+          },
+        ],
+        type: 'css/auto',
+      },
+    ],
+  },
+}));
+```
+
+## Minification
+
+### Enable SWC Minifier
+
+Use the faster SWC minifier instead of Terser:
+
+```json
+"meteor": {
+  "modern": {
+    "minifier": true
+  }
+}
+```
+
+SWC minifier:
+- Faster production builds
+- Better compression
+- Modern optimization techniques
+
+## Production-Only Features
+
+### Exclude Development Dependencies
+
+Ensure development packages aren't included in production:
+
+```javascript
+// Use conditional imports
+if (Meteor.isDevelopment) {
+  import('./devTools').then(({ setup }) => setup());
+}
+```
+
+### Environment-Based Code
+
+Rspack's DefinePlugin eliminates dead code:
+
+```javascript
+// rspack.config.js
+const { rspack } = require('@rspack/core');
+
+module.exports = defineConfig(Meteor => ({
+  plugins: [
+    new rspack.DefinePlugin({
+      'process.env.DEBUG': JSON.stringify(Meteor.isDevelopment),
+    }),
+  ],
+}));
+```
+
+**Code:**
+```javascript
+if (process.env.DEBUG) {
+  console.log('Debug info'); // Removed in production
+}
+```
+
+## Exclude Legacy Builds
+
+For modern browsers only, exclude legacy builds:
+
+### Add to .meteor/platforms
+
+```
+server
+browser
+modern
+```
+
+This removes polyfills and legacy transformations from production builds.
+
+## Package Audit
+
+### Identify Large Packages
+
+Use bundle-visualizer to find large dependencies:
+
+1. Look for unexpectedly large packages
+2. Check if they're actually used
+3. Find lighter alternatives
+4. Convert to dynamic imports if possible
+
+### Common Culprits
+
+- **Moment.js** - Consider `date-fns` or `dayjs`
+- **Lodash** - Use `lodash-es` or specific imports
+- **Full icon libraries** - Import only needed icons
+- **Large UI frameworks** - Use tree-shakeable alternatives
+
+## Best Practices
+
+1. **Visualize regularly** - Run bundle-visualizer periodically
+2. **Use dynamic imports** - Lazy load non-critical code
+3. **Enable tree shaking** - Use Rspack with ES modules
+4. **Split vendor chunks** - Separate stable dependencies
+5. **Transform imports** - Avoid full-package imports
+6. **Externalize helpers** - Install @swc/helpers
+7. **Optimize CSS** - Use Rspack loaders for styles
+8. **Audit dependencies** - Remove unused packages
+9. **Modern-only builds** - Skip legacy if possible
+10. **Measure impact** - Use bundle-visualizer to verify changes
+
+## Monitoring Bundle Size
+
+Compare bundle sizes across builds:
+
+```bash
+# Production build
+meteor build ../output --directory
+
+# Check bundle sizes
+ls -lh ../output/bundle/programs/web.browser/*.js
+```
+
+Track changes over time to prevent bundle bloat.
+
+## Related Topics
+
+- [Performance Optimization](/performance/optimization)
+- [Caching Strategies](/performance/caching)
+- [Performance Profiling](/performance/profiling)

@@ -1,0 +1,176 @@
+---
+title: Contributing Overview
+description: Learn how to contribute to Meteor and become part of the community
+---
+
+We are excited to have your help building Meteor — both the platform and the community behind it. This guide will help you get started with contributing to Meteor.
+
+## Ways to Contribute
+
+There are many ways to contribute to the Meteor Project with increasing levels of involvement:
+
+- **Reporting a bug** - Help us identify and fix issues
+- **Triaging issues** - Help organize and categorize issues
+- **Contributing to documentation** - Improve our docs and guides
+- **Finding work** - Look for issues labeled `good-first-issue` or `ready`
+- **Submitting pull requests** - Contribute code to Meteor core
+- **Reviewing pull requests** - Help review community contributions
+- **Maintaining a community package** - Create and maintain Atmosphere packages
+
+You can also contribute outside of GitHub by organizing or speaking at [Meetups](https://forums.meteor.com/c/meetups), helping to moderate our [forums](https://forums.meteor.com/), and participating in community events.
+
+## Finding Work
+
+### Good First Issues
+
+New to Meteor? Check out issues labeled [`good-first-issue`](https://github.com/meteor/meteor/labels/good%20first%20issue) - these are great starting points for new contributors.
+
+### Ready Issues
+
+We curate specific issues that make great pull requests by applying the `ready` label. These issues have:
+
+- Clear implementation details
+- Community consensus
+- Approved design
+
+Issues without the `ready` label are still open for discussion and input, but the implementation details may need refinement.
+
+<Tip>
+If you're unsure about the best way to implement something, create additional discussion on the issue. You can also reach out to a [core committer](https://github.com/meteor/meteor/blob/devel/CONTRIBUTING.md#core-committer) for guidance.
+</Tip>
+
+## Project Roles
+
+### Reviewers
+
+Reviewers help with pull request reviews:
+
+- [@fredmaiaarantes](https://github.com/fredmaiaarantes)
+- [@henriquealbert](https://github.com/henriquealbert)
+- [@aquinoit](https://github.com/aquinoit)
+- [@Grubba27](https://github.com/Grubba27)
+- [@italojs](https://github.com/italojs)
+- [@nachocodoner](https://github.com/nachocodoner)
+- [@StorytellerCZ](https://github.com/StorytellerCZ)
+- [@zodern](https://github.com/zodern)
+- [@radekmie](https://github.com/radekmie)
+
+### Core Committers
+
+Core committers have commit access to meteor/meteor. To become a core committer, start by contributing pull requests.
+
+Current Core Team:
+
+- [@fredmaiaarantes](https://github.com/fredmaiaarantes)
+- [@henriquealbert](https://github.com/henriquealbert)
+- [@Grubba27](https://github.com/Grubba27)
+- [@italojs](https://github.com/italojs)
+- [@nachocodoner](https://github.com/nachocodoner)
+- [@StorytellerCZ](https://github.com/StorytellerCZ)
+- [@zodern](https://github.com/zodern)
+- [@radekmie](https://github.com/radekmie)
+
+## Tracking Project Work
+
+The best places to track work being done on Meteor:
+
+- [Latest release milestone](https://github.com/meteor/meteor/milestones)
+- [Meteor Roadmap](https://docs.meteor.com/about/roadmap.html) - High-level priorities
+
+## Reporting a Bug
+
+Before filing a bug report:
+
+1. **Search existing issues** to avoid duplicates
+2. **Create a reproduction** - a minimal Meteor app that demonstrates the bug
+3. **Include all relevant details** (OS, browser, Meteor version)
+
+<Warning>
+Without a reproduction, contributors won't be able to fix your issue and it will likely be closed. A single code snippet is **not** a reproduction.
+</Warning>
+
+### Creating a Reproduction
+
+<Steps>
+  <Step title="Create a minimal Meteor app">
+    Create a new app with as little code as possible that still demonstrates the bug. Remove any code unrelated to the issue.
+  </Step>
+  
+  <Step title="Push to GitHub">
+    Create a repository (e.g., `meteor-reactivity-bug` or `meteor-issue-321`) and push your code. **Include `.meteor/packages` and `.meteor/release` files!**
+  </Step>
+  
+  <Step title="Document reproduction steps">
+    In your issue, paste the complete command-line steps starting with `git clone`. Include any browser interaction needed.
+  </Step>
+  
+  <Step title="Include environment details">
+    Specify your operating system, browser, and Meteor version (or commit hash if running from checkout).
+  </Step>
+</Steps>
+
+### Security Issues
+
+<Warning>
+For security issues containing sensitive information, email `security@meteor.com` instead of filing a public issue.
+</Warning>
+
+## Feature Requests
+
+Feature requests are tracked in [Discussions](https://github.com/meteor/meteor/discussions).
+
+### Guidelines
+
+- **Be specific** - Well-specified features have the greatest chance of being implemented
+- **Consider packages first** - Try to implement features as [Atmosphere or npm packages](http://guide.meteor.com/writing-packages.html) rather than core changes
+- **Minimize core changes** - Propose minimal hooks to core that enable package-based implementation
+- **Show support** - Upvote features you want (don't comment with "+1")
+
+<Info>
+Every feature adds maintenance cost. Features should provide value that justifies the ongoing maintenance burden and must work across platforms and integrate well with existing Meteor features.
+</Info>
+
+## Core Design Principles
+
+When evaluating changes to core packages, we prioritize two requirements:
+
+1. **Nothing should harm the new developer experience**
+   - Intuitive APIs that don't require extensive documentation reading
+   - Advanced concepts aren't forced on beginners
+   - Great out-of-the-box experience
+
+2. **Nothing should preclude experts from doing what they want**
+   - Low-level APIs (like [DDP](http://docs.meteor.com/#publish_added)) provide full control
+   - Syntactic sugar makes easy things easy without limiting experts
+
+Meeting both standards simultaneously is challenging but rewarding.
+
+## Code of Conduct
+
+Meteor uses [Contributor Covenant v2.0](https://contributor-covenant.org/version/2/0/code_of_conduct) as our code of conduct.
+
+### Reporting Issues
+
+To report code of conduct violations, email: `code-of-conduct@meteor.com`
+
+All reports are handled confidentially by the Code of Conduct panel.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Development Setup" icon="code" href="/contributing/development">
+    Set up your local Meteor development environment
+  </Card>
+  
+  <Card title="Testing Guidelines" icon="flask" href="/contributing/testing">
+    Learn how to run and write tests for Meteor
+  </Card>
+  
+  <Card title="Contributing Packages" icon="box" href="/contributing/packages">
+    Create and publish Meteor packages
+  </Card>
+  
+  <Card title="Release Process" icon="rocket" href="/contributing/releases">
+    Understand how Meteor releases work
+  </Card>
+</CardGroup>

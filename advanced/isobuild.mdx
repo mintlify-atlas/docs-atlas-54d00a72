@@ -1,0 +1,198 @@
+---
+title: Isobuild System
+description: Deep dive into Meteor's Isobuild packaging and build system
+---
+
+# Isobuild System
+
+Meteor's packaging system is called **Isobuild**. It compiles the same JavaScript code-base to different architectures: browser, Node.js-like server environments, or WebView in Cordova mobile apps.
+
+## Core Concepts
+
+### What is Isobuild?
+
+Isobuild is Meteor's build and packaging system that knows how to compile code for multiple target architectures from a single source tree. The name comes from "isomorphic build" - the ability to build the same code for different execution environments.
+
+From the source code (GLOSSARY.md):
+
+> Meteor has a packaging system called "Isobuild". Isobuild knows how to compile the same JavaScript code-base to different architectures: browser, node.js-like server environment (could be Rhino or other) or a webview in a Cordova mobile app.
+
+### Architecture Targeting
+
+Isobuild supports multiple target architectures:
+
+- `web` - Base web architecture
+- `web.browser` - Modern browsers
+- `web.browser.legacy` - Legacy browser support
+- `web.cordova` - Cordova mobile apps
+- `os` - Generic Node.js server
+- `os.linux.x86_64` - Platform-specific server builds
+- `os.osx.x86_64` - macOS specific builds
+
+## Architecture Matching
+
+The system uses sophisticated architecture matching to find the most appropriate build for a given target:
+
+```javascript
+// From isopack.js - getUnibuildAtArch
+let chosenArch = archinfo.mostSpecificMatch(
+  arch, _.pluck(self.unibuilds, 'arch'));
+
+if (! chosenArch && arch.match(/^os\./)) {
+  // Special-case: deploying from Mac to Linux
+  // Try to find host version
+  chosenArch = archinfo.mostSpecificMatch(
+    archinfo.host(), 
+    _.pluck(self.unibuilds, 'arch')
+  );
+}
+```
+
+## Build Modes
+
+Isobuild supports different build modes that affect which packages are included:
+
+- **production** - Default mode, excludes debugOnly packages
+- **development** - Includes debugOnly packages  
+- **test** - Includes testOnly packages for testing
+
+From bundler.js:
+
+```javascript
+if (p.debugOnly && this.buildMode === 'production') {
+  continue;
+}
+if (p.prodOnly && this.buildMode !== 'production') {
+  continue;
+}
+if (p.testOnly && this.buildMode !== 'test') {
+  continue;
+}
+```
+
+## Package Loading Order
+
+Isobuild performs a two-phase topological sort to determine package load order:
+
+### Phase 1: Determine Used Packages
+
+Identify all packages (unibuilds) that will be used, following non-weak dependencies.
+
+### Phase 2: Determine Load Order
+
+Establish the correct loading sequence where dependencies appear before dependents:
+
+```javascript
+// From bundler.js _determineLoadOrder
+const usedUnibuilds = {};  // Map from unibuild.id to Unibuild
+this.usedPackages = {};    // Map from package name to true
+
+// Recursively add dependencies
+const add = async function (unibuild) {
+  if (!_.has(needed, unibuild.id)) {
+    return;
+  }
+  
+  // Process ordered dependencies first
+  await compiler.eachUsedUnibuild({
+    dependencies: unibuild.uses,
+    arch: this.arch,
+    skipUnordered: true,
+    acceptableWeakPackages: this.usedPackages
+  }, processUnibuild);
+  
+  this.unibuilds.push(unibuild);
+  delete needed[unibuild.id];
+};
+```
+
+## Isopackets
+
+Isopackets are predefined sets of isopacks used inside the meteor-tool itself:
+
+From GLOSSARY.md:
+
+> An isopacket is a predefined set of isopackages which the meteor command-line tool can load into its process. This is how we use the DDP client and many other packages inside the tool.
+
+## Platform Specificity
+
+Packages can be platform-specific if they contain binary builds:
+
+```javascript
+// From isopack.js
+platformSpecific: function () {
+  return _.any(this.architectures(), function (arch) {
+    return arch.match(/^os\./);
+  });
+}
+```
+
+## Isobuild Features
+
+Packages can declare dependencies on isobuild features using the `isobuild:*` pseudo-packages. These ensure the build system has certain capabilities available.
+
+## Watch Sets
+
+Isobuild maintains WatchSets to track file dependencies:
+
+```javascript
+// From isopack.js
+self.pluginWatchSet = new watch.WatchSet();
+
+// Track all source files
+addSourceFilesFromWatchSet(self.pluginWatchSet);
+_.each(self.unibuilds, function (u) {
+  addSourceFilesFromWatchSet(u.watchSet);
+});
+```
+
+The WatchSet enables efficient rebuilds by detecting exactly which files have changed.
+
+## Source Root Detection
+
+For packages built from source, Isobuild can determine the original source root:
+
+```javascript
+getSourceFilesUnderSourceRoot: function (sourceRoot) {
+  var sourceFiles = {};
+  _.each(watchSet.files, function (hash, filename) {
+    var relativePath = files.pathRelative(sourceRoot, filename);
+    // Only files under sourceRoot
+    if (relativePath.substr(0, 3) === '..' + files.pathSep) {
+      return;
+    }
+    sourceFiles[relativePath] = true;
+  });
+  return Object.keys(sourceFiles);
+}
+```
+
+## Build Profiles
+
+The `buildArchitectures()` method can return simplified or complete architecture lists:
+
+```javascript
+buildArchitectures(simplify) {
+  const arches = this.architectures();
+  
+  if (simplify) {
+    // Omit specific arches if covered by prefix
+    // e.g., omit "web.browser.legacy" if "web" is present
+  }
+  
+  return arches.join("+");
+}
+```
+
+## Key Files
+
+- `tools/isobuild/isopack.js` - Core Isopack implementation
+- `tools/isobuild/bundler.js` - Build orchestration
+- `tools/isobuild/compiler.js` - Compilation logic
+- `tools/utils/archinfo.js` - Architecture detection and matching
+
+## Related Topics
+
+- [Isopacks](./isopacks) - The package format
+- [Bundler](./bundler) - Bundle generation
+- [Compiler Plugins](./compiler-plugins) - Extending the build system

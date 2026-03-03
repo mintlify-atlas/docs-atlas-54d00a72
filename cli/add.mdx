@@ -1,0 +1,207 @@
+---
+title: meteor add
+description: Add packages to your Meteor project
+---
+
+The `meteor add` command adds one or more packages to your Meteor project.
+
+## Usage
+
+```bash
+meteor add <package> [package...]
+```
+
+## Basic Usage
+
+Add a single package:
+
+```bash
+meteor add accounts-password
+```
+
+Add multiple packages:
+
+```bash
+meteor add accounts-password accounts-ui
+```
+
+## Version Constraints
+
+You can specify version constraints when adding packages.
+
+### Minimum Version
+
+Add a package at version 1.1.0 or higher (but not 2.0.0 or higher):
+
+```bash
+meteor add package@1.1.0
+```
+
+### Exact Version
+
+Add a package at exactly version 1.1.0:
+
+```bash
+meteor add package@=1.1.0
+```
+
+### Multiple Constraints
+
+You can combine constraints using `||` (OR):
+
+```bash
+meteor add 'package@=1.0.0 || =2.0.1'
+```
+
+This means either 1.0.0 (exactly) or 2.0.1 (exactly).
+
+**Note**: Use quotes when your constraint includes spaces or special characters.
+
+## Removing Version Constraints
+
+To remove a version constraint for a specific package, run `meteor add` again without specifying a version:
+
+```bash
+# First, add with constraint
+meteor add package@=1.1.0
+
+# Later, remove constraint
+meteor add package
+```
+
+## Options
+
+<ParamField path="--allow-incompatible-update" type="boolean" default="false">
+  Allow packages in your project to be upgraded or downgraded to versions that are potentially incompatible with the current versions, if required to satisfy all package version constraints.
+</ParamField>
+
+## Examples
+
+Add React:
+
+```bash
+meteor add react-meteor-data
+```
+
+Add MongoDB packages:
+
+```bash
+meteor add mongo accounts-base
+```
+
+Add a package with a minimum version:
+
+```bash
+meteor add reactive-var@1.0.11
+```
+
+Add a package with an exact version:
+
+```bash
+meteor add reactive-var@=1.0.11
+```
+
+Add a package with complex constraints:
+
+```bash
+meteor add 'my-package@1.0.0 || 2.0.0'
+```
+
+Add a package allowing incompatible updates:
+
+```bash
+meteor add my-package --allow-incompatible-update
+```
+
+## Common Packages
+
+### Authentication
+
+```bash
+meteor add accounts-password
+meteor add accounts-ui
+meteor add accounts-google
+meteor add accounts-facebook
+```
+
+### UI Frameworks
+
+```bash
+meteor add react-meteor-data
+meteor add vue-meteor-tracker
+meteor add blaze-html-templates
+```
+
+### Utilities
+
+```bash
+meteor add session
+meteor add reactive-var
+meteor add reactive-dict
+meteor add check
+meteor add http
+```
+
+### Development
+
+```bash
+meteor add insecure  # Allow client DB writes (dev only)
+meteor add autopublish  # Auto-publish all data (dev only)
+```
+
+**Warning**: Never use `insecure` or `autopublish` in production.
+
+## Finding Packages
+
+Search for available packages:
+
+```bash
+meteor search <query>
+```
+
+View package information:
+
+```bash
+meteor show <package-name>
+```
+
+List packages in your project:
+
+```bash
+meteor list
+```
+
+## Package Sources
+
+Packages can come from:
+
+1. **Meteor Package Server** - Official and community packages
+2. **Local packages** - Packages in your project's `packages/` directory
+3. **Atmosphere** - Legacy package repository (now integrated)
+
+## Version Resolution
+
+When you add a package, Meteor's constraint solver:
+
+1. Resolves all dependencies
+2. Ensures version compatibility
+3. Selects the newest compatible version of each package
+4. Updates `.meteor/versions` file
+
+If the constraint solver can't find compatible versions, it will report which packages are causing conflicts.
+
+## Troubleshooting
+
+If you encounter version conflicts:
+
+```bash
+# Try allowing incompatible updates
+meteor add package --allow-incompatible-update
+
+# Or update all packages
+meteor update --all-packages
+
+# Or remove conflicting packages first
+meteor remove conflicting-package
+meteor add desired-package
+```

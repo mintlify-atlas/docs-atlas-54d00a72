@@ -1,0 +1,378 @@
+---
+title: 'Accounts'
+description: 'User accounts and authentication system'
+---
+
+# Accounts API
+
+The Accounts system provides a complete user authentication solution for Meteor applications.
+
+Source: `packages/accounts-base/`
+
+## Configuration
+
+### Accounts.config()
+
+Set global accounts options. You can also set these in `Meteor.settings.packages.accounts` without the need to call this function.
+
+**Locus:** Anywhere
+
+<ParamField body="options" type="object" required>
+  Configuration options object.
+</ParamField>
+
+<ResponseField name="sendVerificationEmail" type="boolean">
+  New users with an email address will receive an address verification email.
+</ResponseField>
+
+<ResponseField name="forbidClientAccountCreation" type="boolean">
+  Calls to `createUser` from the client will be rejected. Must be set on both client and server to take full effect.
+</ResponseField>
+
+<ResponseField name="restrictCreationByEmailDomain" type="string | function">
+  If set to a string, only allows new users if the domain part of their email address matches the string. If set to a function, only allows new users if the function returns true.
+</ResponseField>
+
+<ResponseField name="loginExpirationInDays" type="number">
+  The number of days from when a user logs in until their token expires and they are logged out. Defaults to 90. Set to `null` to disable login expiration.
+</ResponseField>
+
+<ResponseField name="loginExpiration" type="number">
+  The number of milliseconds from when a user logs in until their token expires, for more granular control.
+</ResponseField>
+
+<ResponseField name="passwordResetTokenExpirationInDays" type="number">
+  The number of days from when a link to reset password is sent until token expires. Defaults to 3.
+</ResponseField>
+
+<ResponseField name="passwordEnrollTokenExpirationInDays" type="number">
+  The number of days from when a link to set initial password is sent until token expires. Defaults to 30.
+</ResponseField>
+
+<ResponseField name="ambiguousErrorMessages" type="boolean">
+  Return ambiguous error messages from login failures to prevent user enumeration. Defaults to `true`.
+</ResponseField>
+
+<ResponseField name="bcryptRounds" type="number">
+  Allows override of number of bcrypt rounds (aka work factor) used to store passwords. The default is 10.
+</ResponseField>
+
+<ResponseField name="defaultFieldSelector" type="object">
+  To exclude by default large custom fields from `Meteor.user()` and `Meteor.findUserBy...()` functions when called without a field selector.
+</ResponseField>
+
+```javascript
+import { Accounts } from 'meteor/accounts-base';
+
+Accounts.config({
+  sendVerificationEmail: true,
+  forbidClientAccountCreation: false,
+  loginExpirationInDays: 30,
+  passwordResetTokenExpirationInDays: 3,
+  restrictCreationByEmailDomain: 'example.com',
+  ambiguousErrorMessages: true
+});
+```
+
+## User Management
+
+### Accounts.createUser() (Client)
+
+Create a new user account.
+
+**Locus:** Client
+
+<ParamField body="options" type="object" required>
+  User creation options.
+</ParamField>
+
+<ResponseField name="username" type="string">
+  A unique name for this user.
+</ResponseField>
+
+<ResponseField name="email" type="string">
+  The user's email address.
+</ResponseField>
+
+<ResponseField name="password" type="string">
+  The user's password. This is __not__ sent in plain text over the wire.
+</ResponseField>
+
+<ResponseField name="profile" type="object">
+  The user's profile, typically including the `name` field.
+</ResponseField>
+
+<ParamField body="callback" type="function">
+  Optional callback. Called with no arguments on success, or with a single Error argument on failure.
+</ParamField>
+
+```javascript
+Accounts.createUser({
+  email: 'user@example.com',
+  password: 'password123',
+  profile: {
+    name: 'John Doe'
+  }
+}, (error) => {
+  if (error) {
+    console.error('Account creation failed:', error);
+  } else {
+    console.log('Account created successfully');
+  }
+});
+```
+
+### Accounts.createUserAsync()
+
+Create a new user and return a promise.
+
+**Locus:** Anywhere
+
+```javascript
+try {
+  await Accounts.createUserAsync({
+    email: 'user@example.com',
+    password: 'password123',
+    profile: { name: 'John Doe' }
+  });
+  console.log('User created');
+} catch (error) {
+  console.error('Failed:', error);
+}
+```
+
+### Accounts.createUser() (Server)
+
+Create a user on the server. Does not log the user in.
+
+**Locus:** Server
+
+**Returns:** `Promise<userId>`
+
+```javascript
+const userId = await Accounts.createUserAsync({
+  email: 'admin@example.com',
+  password: 'securePassword',
+  profile: { role: 'admin' }
+});
+
+console.log('Created user:', userId);
+```
+
+## Hooks and Callbacks
+
+### Accounts.onLogin()
+
+Register a callback to be called after a login attempt succeeds.
+
+**Locus:** Anywhere
+
+<ParamField body="func" type="function" required>
+  The callback to be called when login is successful.
+</ParamField>
+
+```javascript
+Accounts.onLogin((loginInfo) => {
+  console.log('User logged in:', loginInfo.user._id);
+  console.log('Login type:', loginInfo.type);
+});
+```
+
+### Accounts.onLoginFailure()
+
+Register a callback to be called after a login attempt fails.
+
+**Locus:** Anywhere
+
+```javascript
+Accounts.onLoginFailure((loginInfo) => {
+  console.error('Login failed:', loginInfo.error);
+});
+```
+
+### Accounts.onLogout()
+
+Register a callback to be called after a logout attempt succeeds.
+
+**Locus:** Anywhere
+
+```javascript
+Accounts.onLogout(() => {
+  console.log('User logged out');
+  // Clear local state
+  Session.set('selectedItem', null);
+});
+```
+
+### Accounts.validateNewUser() (Server)
+
+Set restrictions on new user creation.
+
+**Locus:** Server
+
+<ParamField body="func" type="function" required>
+  Called whenever a new user is created. Takes the new user object, and returns true to allow the creation or false to abort.
+</ParamField>
+
+```javascript
+Accounts.validateNewUser((user) => {
+  // Require email
+  if (!user.emails || user.emails.length === 0) {
+    throw new Meteor.Error(403, 'Email is required');
+  }
+  
+  // Check email domain
+  const email = user.emails[0].address;
+  if (!email.endsWith('@company.com')) {
+    throw new Meteor.Error(403, 'Must use company email');
+  }
+  
+  return true;
+});
+```
+
+### Accounts.onCreateUser() (Server)
+
+Customize new user creation.
+
+**Locus:** Server
+
+<ParamField body="func" type="function" required>
+  Called whenever a new user is created. Return the new user object, or throw an Error to abort the creation.
+</ParamField>
+
+```javascript
+Accounts.onCreateUser((options, user) => {
+  // Add custom fields
+  user.createdAt = new Date();
+  user.role = 'user';
+  
+  // Copy profile data
+  if (options.profile) {
+    user.profile = options.profile;
+  }
+  
+  return user;
+});
+```
+
+### Accounts.validateLoginAttempt() (Server)
+
+Validate login attempts.
+
+**Locus:** Server
+
+```javascript
+Accounts.validateLoginAttempt((attemptInfo) => {
+  // Block login if user is banned
+  if (attemptInfo.user && attemptInfo.user.banned) {
+    throw new Meteor.Error(403, 'Account has been banned');
+  }
+  
+  // Allow the login
+  return true;
+});
+```
+
+## Server-Side User Management
+
+### Accounts.findUserByEmail()
+
+Find a user by one of their email addresses.
+
+**Locus:** Server
+
+<ParamField body="email" type="string" required>
+  The email address to look for.
+</ParamField>
+
+<ParamField body="options" type="object">
+  Optional options object.
+</ParamField>
+
+**Returns:** `Promise<User | null>`
+
+```javascript
+const user = await Accounts.findUserByEmail('user@example.com');
+if (user) {
+  console.log('Found user:', user._id);
+}
+```
+
+### Accounts.findUserByUsername()
+
+Find a user by their username.
+
+**Locus:** Server
+
+<ParamField body="username" type="string" required>
+  The username to look for.
+</ParamField>
+
+**Returns:** `Promise<User | null>`
+
+```javascript
+const user = await Accounts.findUserByUsername('johndoe');
+```
+
+### Accounts.setUsername()
+
+Change a user's username.
+
+**Locus:** Server
+
+<ParamField body="userId" type="string" required>
+  The ID of the user to update.
+</ParamField>
+
+<ParamField body="newUsername" type="string" required>
+  A new username for the user.
+</ParamField>
+
+```javascript
+await Accounts.setUsername(userId, 'newusername');
+```
+
+## Complete Example
+
+```javascript
+// lib/accounts-config.js (runs on both client and server)
+import { Accounts } from 'meteor/accounts-base';
+
+Accounts.config({
+  sendVerificationEmail: true,
+  forbidClientAccountCreation: false,
+  loginExpirationInDays: 90
+});
+
+if (Meteor.isServer) {
+  // Server-only configuration
+  Accounts.onCreateUser((options, user) => {
+    user.createdAt = new Date();
+    user.role = 'user';
+    if (options.profile) {
+      user.profile = options.profile;
+    }
+    return user;
+  });
+  
+  Accounts.validateNewUser((user) => {
+    if (!user.emails || !user.emails.length) {
+      throw new Meteor.Error(403, 'Email is required');
+    }
+    return true;
+  });
+}
+
+if (Meteor.isClient) {
+  Accounts.onLogin(() => {
+    console.log('User logged in');
+    FlowRouter.go('/dashboard');
+  });
+  
+  Accounts.onLogout(() => {
+    console.log('User logged out');
+    FlowRouter.go('/login');
+  });
+}
+```

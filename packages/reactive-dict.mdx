@@ -1,0 +1,600 @@
+---
+title: ReactiveDict
+description: Reactive dictionary for key-value reactive state management
+---
+
+ReactiveDict provides a reactive dictionary of key-value pairs, similar to Session but scoped to your usage. It's ideal for component-level reactive state.
+
+## Installation
+
+```bash
+meteor add reactive-dict
+```
+
+## Overview
+
+ReactiveDict provides:
+
+- **Reactive key-value storage** - Like Session, but scoped
+- **Hot Code Push persistence** - Optionally preserve state across reloads
+- **EJSON values** - Store any EJSON-serializable value
+- **Fine-grained reactivity** - Only invalidate when specific keys change
+- **Multiple instances** - Create as many dictionaries as needed
+
+## Package Information
+
+- **Version**: 1.3.2
+- **Summary**: Reactive dictionary
+- **Dependencies**: `tracker`, `ejson`, `mongo` (weak), `reload` (weak)
+- **Export**: `ReactiveDict`
+
+## Basic Usage
+
+### Creating a ReactiveDict
+
+```javascript
+import { ReactiveDict } from 'meteor/reactive-dict';
+
+// Anonymous dictionary (not persisted)
+const state = new ReactiveDict();
+
+// Named dictionary (persisted across hot code push)
+const settings = new ReactiveDict('userSettings');
+
+// With initial values
+const form = new ReactiveDict('formData', {
+  username: '',
+  email: '',
+  subscribed: false
+});
+```
+
+<ParamField path="name" type="string">
+  Optional name for the dictionary. Named dictionaries are preserved across Hot Code Push.
+</ParamField>
+
+<ParamField path="initialValue" type="object">
+  Optional object with initial key-value pairs
+</ParamField>
+
+### Setting Values
+
+```javascript
+// Set a single key
+state.set('username', 'alice');
+state.set('count', 42);
+state.set('user', { name: 'Alice', id: 123 });
+
+// Set multiple keys at once
+state.set({
+  username: 'alice',
+  email: 'alice@example.com',
+  role: 'admin'
+});
+```
+
+### Getting Values
+
+```javascript
+// Get a single value (reactive)
+const username = state.get('username');
+console.log(username); // 'alice'
+
+// Get with default value
+const theme = state.get('theme') || 'light';
+
+// Get all values
+const allData = state.all();
+console.log(allData); // { username: 'alice', count: 42, ... }
+```
+
+## Constructor
+
+```javascript
+new ReactiveDict(name, initialValue)
+```
+
+### Anonymous Dictionary
+
+```javascript
+// Not persisted across hot code push
+const tempState = new ReactiveDict();
+```
+
+### Named Dictionary
+
+```javascript
+// Persisted across hot code push (client only)
+const appState = new ReactiveDict('appState');
+
+// After hot code push, values are restored
+appState.set('theme', 'dark');
+// Hot code push happens...
+console.log(appState.get('theme')); // Still 'dark'
+```
+
+## Methods
+
+### set(key, value) or set(object)
+
+Set one or more key-value pairs:
+
+```javascript
+// Single key
+dict.set('name', 'Alice');
+
+// Multiple keys
+dict.set({
+  name: 'Alice',
+  age: 30,
+  city: 'NYC'
+});
+```
+
+<ParamField path="key" type="string">
+  The key to set (when setting single value)
+</ParamField>
+
+<ParamField path="value" type="any">
+  The value to set (must be EJSON-serializable)
+</ParamField>
+
+### get(key)
+
+Get a value and establish reactive dependency:
+
+```javascript
+const value = dict.get('key');
+```
+
+<ParamField path="key" type="string" required>
+  The key to retrieve
+</ParamField>
+
+Returns the value, or `undefined` if key doesn't exist.
+
+### setDefault(key, value)
+
+Set a value only if the key doesn't exist:
+
+```javascript
+dict.setDefault('count', 0);
+dict.setDefault('theme', 'light');
+
+// If 'count' already exists, it won't be changed
+dict.set('count', 5);
+dict.setDefault('count', 10); // count is still 5
+```
+
+### all()
+
+Get all key-value pairs as an object:
+
+```javascript
+const allValues = dict.all();
+console.log(allValues);
+// { name: 'Alice', age: 30, city: 'NYC' }
+```
+
+<Info>
+Calling `all()` creates a dependency on every key in the dictionary.
+</Info>
+
+### clear()
+
+Remove all keys:
+
+```javascript
+dict.clear();
+console.log(dict.all()); // {}
+```
+
+### delete(key)
+
+Remove a specific key:
+
+```javascript
+dict.delete('username');
+console.log(dict.get('username')); // undefined
+```
+
+### equals(key, value)
+
+Reactively check if a key equals a value:
+
+```javascript
+Tracker.autorun(() => {
+  if (dict.equals('status', 'loading')) {
+    showSpinner();
+  } else {
+    hideSpinner();
+  }
+});
+
+dict.set('status', 'loading'); // Shows spinner
+dict.set('status', 'ready');   // Hides spinner
+```
+
+<Info>
+`equals()` is more efficient than `get()` when you only care about a specific value.
+</Info>
+
+## Reactivity
+
+### Key-Level Reactivity
+
+ReactiveDict invalidates only computations that depend on changed keys:
+
+```javascript
+const dict = new ReactiveDict();
+dict.set('a', 1);
+dict.set('b', 2);
+
+// This only reruns when 'a' changes
+Tracker.autorun(() => {
+  console.log('A:', dict.get('a'));
+});
+
+// This only reruns when 'b' changes
+Tracker.autorun(() => {
+  console.log('B:', dict.get('b'));
+});
+
+dict.set('a', 3); // Only first autorun reruns
+dict.set('b', 4); // Only second autorun reruns
+```
+
+### Reactive Patterns
+
+```javascript
+const state = new ReactiveDict();
+
+// Pattern 1: Conditional rendering
+Tracker.autorun(() => {
+  if (state.get('showModal')) {
+    displayModal();
+  } else {
+    hideModal();
+  }
+});
+
+// Pattern 2: Derived values
+Tracker.autorun(() => {
+  const firstName = state.get('firstName');
+  const lastName = state.get('lastName');
+  state.set('fullName', `${firstName} ${lastName}`);
+});
+
+// Pattern 3: Validation
+Tracker.autorun(() => {
+  const email = state.get('email');
+  const isValid = email && email.includes('@');
+  state.set('emailValid', isValid);
+});
+```
+
+## Common Patterns
+
+### Pattern: Form State Management
+
+```javascript
+Template.userForm.onCreated(function() {
+  this.formState = new ReactiveDict();
+  
+  // Initialize form
+  this.formState.set({
+    username: '',
+    email: '',
+    password: '',
+    errors: {}
+  });
+});
+
+Template.userForm.helpers({
+  username() {
+    return Template.instance().formState.get('username');
+  },
+  
+  hasErrors() {
+    const errors = Template.instance().formState.get('errors');
+    return Object.keys(errors).length > 0;
+  },
+  
+  error(field) {
+    const errors = Template.instance().formState.get('errors');
+    return errors[field];
+  }
+});
+
+Template.userForm.events({
+  'input [name=username]'(event, instance) {
+    instance.formState.set('username', event.target.value);
+  },
+  
+  'submit form'(event, instance) {
+    event.preventDefault();
+    
+    const data = {
+      username: instance.formState.get('username'),
+      email: instance.formState.get('email'),
+      password: instance.formState.get('password')
+    };
+    
+    Meteor.call('user.create', data, (error) => {
+      if (error) {
+        instance.formState.set('errors', { submit: error.reason });
+      } else {
+        instance.formState.clear();
+      }
+    });
+  }
+});
+```
+
+### Pattern: Component State
+
+```javascript
+class TodoList {
+  constructor() {
+    this.state = new ReactiveDict();
+    this.state.set({
+      filter: 'all',
+      sortBy: 'createdAt',
+      searchQuery: ''
+    });
+  }
+  
+  getTodos() {
+    const filter = this.state.get('filter');
+    const query = this.state.get('searchQuery');
+    const sort = this.state.get('sortBy');
+    
+    let selector = {};
+    
+    if (filter === 'active') {
+      selector.done = false;
+    } else if (filter === 'completed') {
+      selector.done = true;
+    }
+    
+    if (query) {
+      selector.text = { $regex: query, $options: 'i' };
+    }
+    
+    return Todos.find(selector, { sort: { [sort]: -1 } });
+  }
+  
+  setFilter(filter) {
+    this.state.set('filter', filter);
+  }
+  
+  setSearchQuery(query) {
+    this.state.set('searchQuery', query);
+  }
+  
+  setSortBy(field) {
+    this.state.set('sortBy', field);
+  }
+}
+
+const todoList = new TodoList();
+
+Tracker.autorun(() => {
+  const todos = todoList.getTodos().fetch();
+  console.log('Filtered todos:', todos.length);
+});
+```
+
+### Pattern: Loading States
+
+```javascript
+const loadingStates = new ReactiveDict();
+
+async function loadData(key, fetchFn) {
+  loadingStates.set(key, 'loading');
+  
+  try {
+    const data = await fetchFn();
+    loadingStates.set(key, 'ready');
+    return data;
+  } catch (error) {
+    loadingStates.set(key, 'error');
+    throw error;
+  }
+}
+
+// Usage
+Tracker.autorun(() => {
+  const status = loadingStates.get('userData');
+  
+  if (status === 'loading') {
+    showSpinner();
+  } else if (status === 'error') {
+    showError();
+  } else if (status === 'ready') {
+    showContent();
+  }
+});
+
+loadData('userData', () => Meteor.callAsync('users.getCurrent'));
+```
+
+### Pattern: Feature Flags
+
+```javascript
+const features = new ReactiveDict('features', {
+  newUI: false,
+  betaFeatures: false,
+  advancedMode: false
+});
+
+// In your UI
+Tracker.autorun(() => {
+  if (features.get('newUI')) {
+    renderNewUI();
+  } else {
+    renderOldUI();
+  }
+});
+
+// Toggle features
+features.set('newUI', true);
+```
+
+## Using with React
+
+```javascript
+import { ReactiveDict } from 'meteor/reactive-dict';
+import { useTracker } from 'meteor/react-meteor-data';
+
+const formState = new ReactiveDict();
+
+function UserForm() {
+  const { username, email } = useTracker(() => ({
+    username: formState.get('username') || '',
+    email: formState.get('email') || ''
+  }), []);
+  
+  return (
+    <form>
+      <input
+        value={username}
+        onChange={(e) => formState.set('username', e.target.value)}
+      />
+      <input
+        value={email}
+        onChange={(e) => formState.set('email', e.target.value)}
+      />
+    </form>
+  );
+}
+```
+
+## Persistence
+
+### Hot Code Push Persistence
+
+Named ReactiveDict instances are automatically preserved across hot code push:
+
+```javascript
+// Client only - persisted across reloads
+const settings = new ReactiveDict('userSettings');
+settings.set('theme', 'dark');
+settings.set('language', 'en');
+
+// After hot code push, values are restored
+```
+
+<Info>
+Persistence only works on the client and only for hot code push, not full page reloads.
+</Info>
+
+### Manual Serialization
+
+```javascript
+// Export state
+const stateJSON = JSON.stringify(dict.all());
+localStorage.setItem('appState', stateJSON);
+
+// Restore state
+const savedState = JSON.parse(localStorage.getItem('appState'));
+const dict = new ReactiveDict(null, savedState);
+```
+
+## Comparison with Session
+
+### ReactiveDict
+
+```javascript
+const dict = new ReactiveDict();
+dict.set('key', 'value');
+const value = dict.get('key');
+
+// ✓ Multiple instances
+// ✓ Scoped (not global)
+// ✓ Must be passed around
+// ✓ Optional persistence with naming
+// ✓ Better for component state
+```
+
+### Session (deprecated)
+
+```javascript
+Session.set('key', 'value');
+const value = Session.get('key');
+
+// ✓ Global (one instance)
+// ✓ Accessible everywhere
+// ✓ Always persisted
+// ✓ Can have key collisions
+// ✓ Harder to reason about
+```
+
+## Performance Tips
+
+<Tip>
+**Use `equals()` for boolean checks** - More efficient than `get()` when checking specific values
+</Tip>
+
+<Tip>
+**Avoid `all()`** in computations - Creates dependency on every key
+</Tip>
+
+<Tip>
+**Batch updates** - Set multiple keys at once with object syntax
+</Tip>
+
+```javascript
+// Good: Single reactivity invalidation
+dict.set({
+  a: 1,
+  b: 2,
+  c: 3
+});
+
+// Less efficient: Three separate invalidations
+dict.set('a', 1);
+dict.set('b', 2);
+dict.set('c', 3);
+```
+
+## Debugging
+
+```javascript
+// Log all changes
+const originalSet = dict.set.bind(dict);
+dict.set = function(key, value) {
+  if (typeof key === 'string') {
+    console.log('Set', key, '=', value);
+  } else {
+    console.log('Set multiple:', key);
+  }
+  return originalSet.apply(this, arguments);
+};
+
+// Dump current state
+console.log('Current state:', dict.all());
+
+// Track specific key
+Tracker.autorun(() => {
+  console.log('Key changed:', 'myKey', '=', dict.get('myKey'));
+});
+```
+
+## Related Packages
+
+<CardGroup cols={2}>
+  <Card title="reactive-var" icon="rotate" href="/packages/reactive-var">
+    Single reactive values
+  </Card>
+  <Card title="tracker" icon="arrows-rotate" href="/packages/tracker">
+    Reactive computation system
+  </Card>
+  <Card title="session" icon="memory" href="#">
+    Global reactive dictionary (deprecated)
+  </Card>
+</CardGroup>
+
+## Source Code
+
+- [packages/reactive-dict](https://github.com/meteor/meteor/tree/devel/packages/reactive-dict)

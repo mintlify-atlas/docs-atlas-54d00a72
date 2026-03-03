@@ -1,0 +1,300 @@
+---
+title: 'Meteor Namespace'
+description: 'Global Meteor namespace API reference'
+---
+
+# Meteor Namespace API
+
+The `Meteor` namespace provides the core API for Meteor applications on both client and server.
+
+## User Management
+
+### Meteor.userId()
+
+Get the current user id, or `null` if no user is logged in. A reactive data source.
+
+**Locus:** Anywhere
+
+```javascript
+const userId = Meteor.userId();
+if (userId) {
+  console.log('User is logged in:', userId);
+}
+```
+
+**Reactive Example:**
+```javascript
+Tracker.autorun(() => {
+  const userId = Meteor.userId();
+  if (userId) {
+    console.log('User changed:', userId);
+  }
+});
+```
+
+### Meteor.user()
+
+Get the current user record, or `null` if no user is logged in. A reactive data source.
+
+**Locus:** Anywhere
+
+<ParamField body="options" type="object">
+  Optional options object.
+</ParamField>
+
+<ResponseField name="options.fields" type="object">
+  Dictionary of fields to return or exclude.
+</ResponseField>
+
+```javascript
+const user = Meteor.user();
+if (user) {
+  console.log('Username:', user.username);
+  console.log('Email:', user.emails[0].address);
+}
+
+// With field selection
+const userProfile = Meteor.user({ fields: { profile: 1 } });
+```
+
+**Note:** On the server, `Meteor.user()` is deprecated. Use `Meteor.userAsync()` instead.
+
+### Meteor.userAsync()
+
+Asynchronously get the current user record, or `null` if no user is logged in.
+
+**Locus:** Anywhere
+
+<ParamField body="options" type="object">
+  Optional options object.
+</ParamField>
+
+<ResponseField name="options.fields" type="object">
+  Dictionary of fields to return or exclude.
+</ResponseField>
+
+```javascript
+const user = await Meteor.userAsync();
+if (user) {
+  console.log('User email:', user.emails[0].address);
+}
+```
+
+## Authentication
+
+### Meteor.logout()
+
+Log the user out.
+
+**Locus:** Client
+
+<ParamField body="callback" type="function">
+  Optional callback. Called with no arguments on success, or with a single Error argument on failure.
+</ParamField>
+
+```javascript
+Meteor.logout((error) => {
+  if (error) {
+    console.error('Logout failed:', error);
+  } else {
+    console.log('Logged out successfully');
+  }
+});
+```
+
+### Meteor.logoutAllClients()
+
+Log out all clients logged in as the current user and logs the current user out as well.
+
+**Locus:** Client
+
+```javascript
+Meteor.logoutAllClients((error) => {
+  if (!error) {
+    console.log('Logged out from all devices');
+  }
+});
+```
+
+### Meteor.logoutOtherClients()
+
+Log out other clients logged in as the current user, but does not log out the client that calls this function.
+
+**Locus:** Client
+
+```javascript
+Meteor.logoutOtherClients((error) => {
+  if (!error) {
+    console.log('Other sessions logged out');
+  }
+});
+```
+
+### Meteor.loginWithPassword()
+
+Log the user in with a password.
+
+**Locus:** Client
+
+<ParamField body="selector" type="string | object" required>
+  Either a string interpreted as a username or an email; or an object with a single key: `email`, `username` or `id`. Username or email match in a case insensitive manner.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  The user's password.
+</ParamField>
+
+<ParamField body="callback" type="function">
+  Optional callback. Called with no arguments on success, or with a single Error argument on failure.
+</ParamField>
+
+```javascript
+// Login with username
+Meteor.loginWithPassword('username', 'password', (error) => {
+  if (error) {
+    console.error('Login failed:', error);
+  } else {
+    console.log('Login successful');
+  }
+});
+
+// Login with email
+Meteor.loginWithPassword('user@example.com', 'password', callback);
+
+// Login with object selector
+Meteor.loginWithPassword({ email: 'user@example.com' }, 'password', callback);
+```
+
+### Meteor.loginWithToken()
+
+Login with a Meteor access token.
+
+**Locus:** Client
+
+<ParamField body="token" type="string" required>
+  Local storage token for use with login across multiple tabs in the same browser.
+</ParamField>
+
+<ParamField body="callback" type="function">
+  Optional callback. Called with no arguments on success.
+</ParamField>
+
+```javascript
+const token = localStorage.getItem('Meteor.loginToken');
+Meteor.loginWithToken(token, (error) => {
+  if (!error) {
+    console.log('Logged in with token');
+  }
+});
+```
+
+## Connection Management
+
+### Meteor.status()
+
+Get the current connection status. A reactive data source.
+
+**Locus:** Client
+
+<ResponseField name="connected" type="boolean">
+  True if currently connected to the server.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Connection status: "connected", "connecting", "failed", "waiting", or "offline".
+</ResponseField>
+
+<ResponseField name="retryCount" type="number">
+  Number of reconnection attempts made.
+</ResponseField>
+
+<ResponseField name="retryTime" type="number">
+  Estimated time of next reconnection attempt.
+</ResponseField>
+
+<ResponseField name="reason" type="string">
+  If failed, description of why.
+</ResponseField>
+
+```javascript
+const status = Meteor.status();
+console.log('Connected:', status.connected);
+console.log('Status:', status.status);
+
+// Reactive usage
+Tracker.autorun(() => {
+  const status = Meteor.status();
+  if (status.connected) {
+    console.log('Connected to server');
+  }
+});
+```
+
+### Meteor.reconnect()
+
+Force an immediate reconnection attempt if the client is not connected to the server.
+
+**Locus:** Client
+
+```javascript
+Meteor.reconnect();
+```
+
+### Meteor.disconnect()
+
+Disconnect the client from the server.
+
+**Locus:** Client
+
+```javascript
+Meteor.disconnect();
+```
+
+## Reactive State
+
+### Meteor.loggingIn()
+
+True if a login method is currently in progress. A reactive data source.
+
+**Locus:** Client
+
+```javascript
+if (Meteor.loggingIn()) {
+  return <Spinner />;
+}
+```
+
+### Meteor.loggingOut()
+
+True if a logout method is currently in progress. A reactive data source.
+
+**Locus:** Client
+
+```javascript
+if (Meteor.loggingOut()) {
+  console.log('Logging out...');
+}
+```
+
+## Server Connection
+
+### Meteor.onConnection()
+
+Register a callback to be called when a new DDP connection is made to the server.
+
+**Locus:** Server
+
+<ParamField body="callback" type="function" required>
+  The function to call when a new DDP connection is established.
+</ParamField>
+
+```javascript
+Meteor.onConnection((connection) => {
+  console.log('New connection:', connection.id);
+  console.log('Client address:', connection.clientAddress);
+  
+  connection.onClose(() => {
+    console.log('Connection closed:', connection.id);
+  });
+});
+```

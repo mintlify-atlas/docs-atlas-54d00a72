@@ -1,0 +1,318 @@
+---
+title: babel-compiler
+description: Parser and transpiler for ECMAScript 2015+ syntax using Babel and SWC
+---
+
+The `babel-compiler` package provides parsing and transpilation capabilities for modern JavaScript syntax in Meteor applications. It supports both Babel and SWC compilers with automatic fallback mechanisms.
+
+## Overview
+
+This package exposes the Babel API and SWC compiler for transpiling ECMAScript 2015+ code to run in older browsers and Node.js environments. It automatically chooses between SWC (faster) and Babel (more compatible) based on your configuration.
+
+## Dependencies
+
+```javascript
+{
+  "@meteorjs/babel": "7.20.1",
+  "json5": "2.2.3",
+  "semver": "7.6.3",
+  "@meteorjs/swc-core": "1.15.3"
+}
+```
+
+## Compilers
+
+### BabelCompiler
+
+The main compiler class that can be instantiated with custom features.
+
+```javascript
+const compiler = new BabelCompiler(extraFeatures, modifyConfig);
+```
+
+**Parameters:**
+- `extraFeatures` (Object): Configuration options for compilation features
+- `modifyConfig` (Function): Optional function to modify the Babel configuration
+
+### SwcCompiler
+
+An optimized compiler that always uses SWC for faster transpilation.
+
+```javascript
+const compiler = new SwcCompiler(extraFeatures, modifyConfig);
+```
+
+Inherits from `BabelCompiler` with `swc: true` automatically enabled.
+
+## Configuration
+
+### Babel Configuration
+
+Configure Babel using `.babelrc` or `package.json`:
+
+**.babelrc example:**
+```json
+{
+  "plugins": ["transform-class-properties"]
+}
+```
+
+**package.json example:**
+```json
+{
+  "babel": {
+    "plugins": ["transform-class-properties"]
+  }
+}
+```
+
+### SWC Configuration
+
+Configure SWC using `.swcrc` or `swc.config.js`:
+
+**.swcrc example:**
+```json
+{
+  "jsc": {
+    "target": "es2015",
+    "parser": {
+      "syntax": "ecmascript",
+      "jsx": true
+    },
+    "externalHelpers": true
+  },
+  "module": {
+    "type": "es6"
+  }
+}
+```
+
+**swc.config.js example:**
+```javascript
+export default {
+  jsc: {
+    target: 'es2015',
+    parser: {
+      syntax: 'typescript',
+      tsx: true
+    }
+  }
+};
+```
+
+### Meteor Configuration
+
+Control transpiler behavior via `package.json`:
+
+```json
+{
+  "meteor": {
+    "modern": {
+      "transpiler": {
+        "excludeApp": false,
+        "excludeNodeModules": true,
+        "excludePackages": false,
+        "excludeLegacy": false,
+        "verbose": false
+      }
+    }
+  }
+}
+```
+
+**Configuration Options:**
+- `excludeApp` - Exclude application code from SWC (boolean or array of patterns)
+- `excludeNodeModules` - Exclude node_modules from SWC (boolean or array of patterns)
+- `excludePackages` - Exclude Meteor packages from SWC (boolean or array of patterns)
+- `excludeLegacy` - Exclude legacy builds from SWC
+- `verbose` - Enable verbose transpilation logging
+
+## API
+
+### Babel.compile(source, options, cacheOptions)
+
+Compile JavaScript source code.
+
+```javascript
+const babelOptions = Babel.getDefaultOptions();
+const result = Babel.compile(
+  "let square = (x) => x*x;",
+  babelOptions
+);
+// result.code: "var square = function (x) { return x * x; };"
+```
+
+### Babel.getDefaultOptions(extraFeatures)
+
+Get default Babel options with optional feature overrides.
+
+```javascript
+const options = Babel.getDefaultOptions({
+  modernBrowsers: true,
+  nodeMajorVersion: 14,
+  typescript: true
+});
+```
+
+### Babel.parse(source)
+
+Parse JavaScript source into an AST.
+
+```javascript
+const ast = Babel.parse("const x = 1;");
+```
+
+### Babel.compileForShell(command, cacheOptions)
+
+Compile code for shell execution.
+
+```javascript
+const code = Babel.compileForShell("import fs from 'fs';");
+```
+
+## Features
+
+### Automatic Compiler Selection
+
+The package automatically selects SWC for faster compilation and falls back to Babel when needed:
+
+```javascript:packages/babel-compiler/babel-compiler.js
+const shouldUseSwc = 
+  (!shouldSkipSwc || this.extraFeatures?.swc) && 
+  !this._swcIncompatible[cacheKey];
+```
+
+### External Helpers
+
+Install `@swc/helpers` for smaller bundle sizes:
+
+```bash
+meteor npm install --save @swc/helpers
+```
+
+Benefits:
+- Smaller bundle size through reduced code duplication
+- Faster page loads with less code to parse
+- Optional browser caching for vendor chunks
+
+### Architecture Support
+
+Different compilation strategies per architecture:
+
+- **Modern browsers** (`web.browser`): ES2015+ with minimal transpilation
+- **Legacy browsers** (`web.browser.legacy`): Full transpilation with polyfills
+- **Node.js** (`os.*`): Version-specific transpilation
+- **Cordova** (`web.cordova`): Configurable modern/legacy support
+
+### Top-Level Await
+
+Supported in:
+- Server-side code by default
+- Client-side when `METEOR_ENABLE_CLIENT_TOP_LEVEL_AWAIT=true`
+
+### TypeScript Support
+
+Automatic TypeScript configuration via `tsconfig.json`:
+
+```javascript:packages/babel-compiler/babel-compiler.js
+BCp.inferTypeScriptConfig = function (features, inputFile, cacheDeps) {
+  if (features.typescript && inputFile.findControlFile) {
+    const tsconfigPath = inputFile.findControlFile("tsconfig.json");
+    if (tsconfigPath) {
+      features.typescript = { tsconfigPath };
+      return true;
+    }
+  }
+};
+```
+
+## Caching
+
+### SWC Cache
+
+The compiler maintains both in-memory and disk caches:
+
+```javascript:packages/babel-compiler/babel-compiler.js
+BCp.readFromSwcCache = function({ cacheKey }) {
+  let compilation = this._swcCache[cacheKey];
+  if (!compilation && this.cacheDirectory) {
+    const cacheFilePath = path.join(
+      this.cacheDirectory, 
+      '.swc-cache', 
+      `${cacheKey}.json`
+    );
+    // Read from disk cache
+  }
+  return compilation;
+};
+```
+
+### Cache Directory
+
+Set a custom cache directory:
+
+```javascript
+compiler.setDiskCacheDirectory('/path/to/cache');
+```
+
+## Excluded Files
+
+Files excluded from transpilation:
+- `*.es5.js` - Already ES5 compatible
+- `*.min.js` - Already minified
+- Files with `transpile: false` option
+- Bare files without CommonJS access
+
+## Verbose Logging
+
+Enable detailed transpilation logs:
+
+```json
+{
+  "meteor": {
+    "modern": {
+      "transpiler": {
+        "verbose": true
+      }
+    }
+  }
+}
+```
+
+Output includes:
+- Compiler used (SWC/Babel/Rspack)
+- File path and origin (app/package/node_modules)
+- Cache hit/miss status
+- Target architecture
+- Error messages and tips
+
+## Example Usage
+
+### Custom Plugin
+
+```javascript
+Plugin.registerCompiler({
+  extensions: ['js'],
+}, () => new BabelCompiler({
+  modernBrowsers: true,
+  typescript: true
+}, (babelOptions, inputFile) => {
+  // Modify Babel options
+  babelOptions.plugins.push('custom-plugin');
+}));
+```
+
+### SWC-Only Compilation
+
+```javascript
+Plugin.registerCompiler({
+  extensions: ['js', 'jsx'],
+}, () => new SwcCompiler());
+```
+
+## Notes
+
+- Forbidden presets (`babel-preset-meteor`, `@babel/preset-env`, `@babel/preset-react`) are automatically ignored to prevent conflicts
+- `.babelrc` files must be in the application root directory
+- The package runs only on the server side
+- Rspack output files bypass transpilation as they're already processed

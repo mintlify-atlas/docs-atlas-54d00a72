@@ -1,0 +1,386 @@
+---
+title: Data Loading Patterns
+description: How to load data in Meteor using publications and subscriptions
+---
+
+## Overview
+
+Meteor uses a publish-subscribe pattern for data loading, built on the Distributed Data Protocol (DDP). This allows the server to push data to clients in real-time, keeping client-side collections synchronized with the server.
+
+## Publications and Subscriptions
+
+In traditional HTTP-based applications, the client makes requests and receives responses. Meteor's DDP allows bidirectional data flow:
+
+- **Publication**: A named API endpoint on the server that constructs and sends data to clients
+- **Subscription**: A client connection to a publication that receives data and updates
+
+<Info>
+A subscription creates a "pipe" that connects a server-side MongoDB collection to the client-side Minimongo cache, keeping them synchronized in real-time.
+</Info>
+
+## Defining Publications
+
+Publications should be defined in server-only files.
+
+### Basic Publication
+
+```javascript
+// Server-side
+Meteor.publish('lists.public', function() {
+  return Lists.find(
+    { userId: { $exists: false } },
+    { fields: { name: 1, createdAt: 1 } }
+  );
+});
+```
+
+Key points:
+- Return a MongoDB cursor to publish data
+- Use field projection to limit exposed data
+- The publication name is used by clients to subscribe
+
+### Publication with Parameters
+
+```javascript
+import SimpleSchema from 'simpl-schema';
+
+Meteor.publish('todos.inList', function(listId) {
+  // Always validate arguments from the client
+  new SimpleSchema({
+    listId: { type: String }
+  }).validate({ listId });
+  
+  return Todos.find(
+    { listId },
+    { fields: { text: 1, checked: 1, listId: 1 } }
+  );
+});
+```
+
+### Using this.userId
+
+```javascript
+Meteor.publish('lists.private', function() {
+  if (!this.userId) {
+    return this.ready();
+  }
+  
+  return Lists.find(
+    { userId: this.userId },
+    { fields: Lists.publicFields }
+  );
+});
+```
+
+<Tip>
+Always call `this.ready()` when not returning a cursor, otherwise the subscription will never be marked as ready.
+</Tip>
+
+### Multiple Collections in One Publication
+
+```javascript
+Meteor.publish('dashboard', function() {
+  if (!this.userId) {
+    return this.ready();
+  }
+  
+  return [
+    Lists.find({ userId: this.userId }),
+    Todos.find({ userId: this.userId }),
+    Statistics.find({ userId: this.userId })
+  ];
+});
+```
+
+## Subscribing to Data
+
+Subscriptions are created on the client using `Meteor.subscribe()`.
+
+### Basic Subscription
+
+```javascript
+// Client-side
+const handle = Meteor.subscribe('lists.public');
+
+// Check if subscription is ready
+if (handle.ready()) {
+  console.log('Data is loaded');
+}
+```
+
+### Subscription with Arguments
+
+```javascript
+const listId = '123abc';
+const handle = Meteor.subscribe('todos.inList', listId);
+```
+
+### Stopping Subscriptions
+
+<Warning>
+Always stop subscriptions when you're done with them to free up resources on both client and server.
+</Warning>
+
+```javascript
+const handle = Meteor.subscribe('todos.inList', listId);
+
+// Later, when done:
+handle.stop();
+```
+
+## Reactive Subscriptions
+
+### In Blaze Templates
+
+```javascript
+Template.Lists_show_page.onCreated(function() {
+  this.getListId = () => FlowRouter.getParam('_id');
+  
+  this.autorun(() => {
+    // Subscription re-runs when getListId() changes
+    this.subscribe('todos.inList', this.getListId());
+  });
+});
+```
+
+### In React with useTracker
+
+```javascript
+import { useTracker } from 'meteor/react-meteor-data';
+import { Todos } from '/imports/api/todos';
+
+function TodoList({ listId }) {
+  const { todos, isLoading } = useTracker(() => {
+    const handle = Meteor.subscribe('todos.inList', listId);
+    
+    return {
+      todos: Todos.find({ listId }).fetch(),
+      isLoading: !handle.ready()
+    };
+  }, [listId]);
+  
+  if (isLoading) {
+    return <div>Loading...</div>;
+  }
+  
+  return (
+    <ul>
+      {todos.map(todo => (
+        <li key={todo._id}>{todo.text}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+## Fetching Data
+
+### Always Use Specific Queries
+
+```javascript
+// ❌ Bad: Fetches all data in the collection
+const todos = Todos.find().fetch();
+
+// ✅ Good: Specific query matching your subscription
+const todos = Todos.find({ listId }).fetch();
+```
+
+### Fetch Near Subscribe
+
+Keep data fetching close to subscriptions to avoid "action at a distance":
+
+```javascript
+// ✅ Good: Subscribe and fetch in the same component
+Template.TodoList.onCreated(function() {
+  this.autorun(() => {
+    this.subscribe('todos.inList', this.listId);
+  });
+});
+
+Template.TodoList.helpers({
+  todos() {
+    return Todos.find({ listId: Template.instance().listId });
+  }
+});
+```
+
+## Advanced Publication Patterns
+
+### Reactive Joins
+
+Publish related data from multiple collections:
+
+```javascript
+import { publishComposite } from 'meteor/reywood:publish-composite';
+
+publishComposite('todos.withLists', function(userId) {
+  return {
+    find() {
+      return Lists.find({ userId });
+    },
+    children: [{
+      find(list) {
+        return Todos.find({ listId: list._id });
+      }
+    }]
+  };
+});
+```
+
+### Low-Level Publish API
+
+For complete control over what data is sent:
+
+```javascript
+Meteor.publish('custom.data', function() {
+  // Add initial data
+  this.added('collectionName', 'id1', { field: 'value' });
+  
+  // Update existing data
+  this.changed('collectionName', 'id1', { field: 'newValue' });
+  
+  // Remove data
+  this.removed('collectionName', 'id1');
+  
+  // Mark subscription as ready
+  this.ready();
+  
+  // Optional: Return a stop handler
+  this.onStop(() => {
+    console.log('Subscription stopped');
+  });
+});
+```
+
+### Counting Records Efficiently
+
+```javascript
+import { Counts } from 'meteor/tmeasday:publish-counts';
+
+Meteor.publish('todos.count', function(listId) {
+  Counts.publish(this, 'todos.count', Todos.find({ listId }));
+});
+
+// Client-side
+const count = Counts.get('todos.count');
+```
+
+## Publication Strategies
+
+Meteor supports different publication strategies to balance performance and memory usage:
+
+```javascript
+const publicationStrategies = {
+  // Default: Server maintains copy of all subscribed data
+  SERVER_MERGE: {
+    useCollectionView: true,
+    doAccountingForCollection: true
+  },
+  
+  // No history: Server sends data but doesn't track it
+  NO_MERGE_NO_HISTORY: {
+    useCollectionView: false,
+    doAccountingForCollection: false
+  },
+  
+  // Track IDs only for removal
+  NO_MERGE: {
+    useCollectionView: false,
+    doAccountingForCollection: true
+  }
+};
+```
+
+## Subscription Readiness
+
+### Single Subscription
+
+```javascript
+const handle = Meteor.subscribe('lists.public');
+
+Tracker.autorun(() => {
+  if (handle.ready()) {
+    console.log('Subscription ready');
+  }
+});
+```
+
+### Multiple Subscriptions
+
+```javascript
+const handles = [
+  Meteor.subscribe('lists.public'),
+  Meteor.subscribe('lists.private')
+];
+
+Tracker.autorun(() => {
+  const allReady = handles.every(handle => handle.ready());
+  if (allReady) {
+    console.log('All subscriptions ready');
+  }
+});
+```
+
+### In Blaze Templates
+
+```javascript
+Template.MyTemplate.helpers({
+  isReady() {
+    return Template.instance().subscriptionsReady();
+  }
+});
+```
+
+## Security Considerations
+
+<Warning>
+**Always validate publication arguments** and never trust client input.
+</Warning>
+
+```javascript
+Meteor.publish('todos.inList', function(listId) {
+  // Validate arguments
+  check(listId, String);
+  
+  // Verify permissions
+  const list = Lists.findOne(listId);
+  if (!list || (list.userId && list.userId !== this.userId)) {
+    return this.ready();
+  }
+  
+  return Todos.find({ listId });
+});
+```
+
+### Field Filtering
+
+Never publish sensitive fields:
+
+```javascript
+Meteor.publish('users.public', function() {
+  return Meteor.users.find({}, {
+    fields: {
+      username: 1,
+      'profile.name': 1,
+      // Never publish:
+      // - services (OAuth tokens)
+      // - emails (unless needed)
+      // - password hashes
+    }
+  });
+});
+```
+
+## Performance Tips
+
+1. **Use field projection** to limit data sent over the wire
+2. **Limit published documents** with reasonable query constraints
+3. **Use indexes** on MongoDB for publication queries
+4. **Consider denormalization** for frequently accessed data
+5. **Use oplog tailing** for better performance in production
+
+## Related Resources
+
+- [Publications API Reference](https://docs.meteor.com/api/pubsub.html)
+- [Methods Guide](/guides/methods)
+- [Security Guide](/guides/security)

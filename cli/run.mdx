@@ -1,0 +1,216 @@
+---
+title: meteor run
+description: Run a Meteor application in development mode
+---
+
+The `meteor run` command (or just `meteor`) runs your Meteor project in local development mode.
+
+## Usage
+
+```bash
+meteor run [target...] [options]
+meteor [target...] [options]
+```
+
+## Basic Usage
+
+Run the app on localhost:3000:
+
+```bash
+meteor
+# or
+meteor run
+```
+
+## Targets
+
+If you have added mobile platforms to your app with `meteor add-platform`, you can specify run targets:
+
+<ParamField path="android" type="string">
+  Run on the Android emulator
+</ParamField>
+
+<ParamField path="android-device" type="string">
+  Run on a connected Android device
+</ParamField>
+
+<ParamField path="ios" type="string">
+  Run on the iOS simulator
+</ParamField>
+
+<ParamField path="ios-device" type="string">
+  Open Xcode with the iOS project for this app, where you can run your app on a connected iOS device
+</ParamField>
+
+### Examples
+
+```bash
+meteor run android
+meteor run ios
+meteor run android-device
+```
+
+## Options
+
+<ParamField path="--port" type="string" default="3000">
+  Port to listen on (also uses port N+1 and a port specified by --app-port). Specify as `--port=host:port` to bind to a specific interface.
+</ParamField>
+
+<ParamField path="--open" type="boolean" default="false">
+  Opens a browser window when the app starts
+</ParamField>
+
+<ParamField path="--inspect" type="string">
+  Enable server-side debugging via debugging clients like the Node.js command-line debugger, Chrome DevTools, or Visual Studio Code. Optionally specify a port (default: 9229).
+</ParamField>
+
+<ParamField path="--inspect-brk" type="string">
+  Enable server-side debugging with the server paused at startup, waiting for clients to attach. Optionally specify a port (default: 9229).
+</ParamField>
+
+<ParamField path="--mobile-server" type="string">
+  Location where mobile builds connect to the Meteor server. Defaults to your local IP and the port that the Meteor server binds to. Can include a URL scheme (e.g., `--mobile-server=https://example.com:443`).
+</ParamField>
+
+<ParamField path="--cordova-server-port" type="number">
+  Local port where Cordova will serve content. Important when multiple Cordova apps are built from the same Meteor app source code. By default, the port is generated using the id inside `.meteor/.id`.
+</ParamField>
+
+<ParamField path="--production" type="boolean" default="false">
+  Simulate production mode. Minify and bundle CSS and JS files.
+</ParamField>
+
+<ParamField path="--raw-logs" type="boolean" default="true">
+  Run without parsing logs from stdout and stderr
+</ParamField>
+
+<ParamField path="--timestamps" type="boolean" default="false">
+  Run with timestamps in logs (same as passing `--raw-logs=false`)
+</ParamField>
+
+<ParamField path="--settings" type="string">
+  Set optional data for Meteor.settings on the server. Provide a path to a JSON file.
+</ParamField>
+
+<ParamField path="--release" type="string">
+  Specify the release of Meteor to use
+</ParamField>
+
+<ParamField path="--verbose" type="boolean" default="false">
+  Print all output from build logs
+</ParamField>
+
+<ParamField path="--no-lint" type="boolean" default="false">
+  Don't run linters used by the app on every rebuild
+</ParamField>
+
+<ParamField path="--no-release-check" type="boolean" default="false">
+  Don't run the release updater to check for new releases
+</ParamField>
+
+<ParamField path="--allow-incompatible-update" type="boolean" default="false">
+  Allow packages in your project to be upgraded or downgraded to versions that are potentially incompatible with the current versions, if required to satisfy all package version constraints.
+</ParamField>
+
+<ParamField path="--extra-packages" type="string">
+  Run with additional packages (comma-separated, e.g., `--extra-packages "package-name1, package-name2@1.2.3"`)
+</ParamField>
+
+<ParamField path="--exclude-archs" type="string">
+  Don't create bundles for certain web architectures (comma-separated, e.g., `--exclude-archs "web.browser.legacy, web.cordova"`)
+</ParamField>
+
+## Examples
+
+Run on a custom port:
+
+```bash
+meteor run --port 4000
+```
+
+Run with a settings file:
+
+```bash
+meteor run --settings settings.json
+```
+
+Run in production mode:
+
+```bash
+meteor run --production
+```
+
+**Warning**: The `--production` flag should only be used to simulate production bundling for testing purposes. Use `meteor build` to create a bundle for production deployment.
+
+Run with debugging enabled:
+
+```bash
+meteor run --inspect
+meteor run --inspect-brk
+meteor run --inspect-brk=9229
+```
+
+Run and open in browser:
+
+```bash
+meteor run --open
+```
+
+Run on Android emulator:
+
+```bash
+meteor run android
+```
+
+Run with specific mobile server URL:
+
+```bash
+meteor run android --mobile-server https://example.com:3000
+```
+
+## Features
+
+### Auto-refresh
+
+Whenever you change any of the application's source files, the changes are automatically detected and applied to the running application.
+
+### Persistent Database
+
+The application's database persists between runs. It's stored under the `.meteor` directory in the root of the project.
+
+### No Internet Required
+
+No internet connection is required to run your app locally.
+
+## Debug Command
+
+The `meteor debug` command is deprecated in favor of `meteor --inspect-brk`:
+
+```bash
+# Deprecated
+meteor debug
+
+# Use instead
+meteor run --inspect-brk
+```
+
+## Debugging
+
+The `--inspect` and `--inspect-brk` flags enable server-side debugging:
+
+- Use `--inspect` to enable debugging without pausing
+- Use `--inspect-brk` to pause at startup, waiting for debugger to attach
+
+Two notable differences from Node.js behavior:
+
+1. The `--inspect[-brk]` flags affect the server process spawned by the build process, not the build process itself
+2. The `--inspect-brk` flag causes the server to pause just after server code loads but before it executes, giving you a chance to set breakpoints
+
+You can also use the `debugger` keyword to set breakpoints:
+
+```javascript
+function myFunction() {
+  debugger; // Execution will pause here when debugger is attached
+  // Your code
+}
+```

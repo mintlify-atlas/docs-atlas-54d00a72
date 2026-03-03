@@ -1,0 +1,533 @@
+---
+title: Blaze Integration
+description: Meteor's powerful reactive templating system
+---
+
+Blaze is Meteor's built-in reactive templating engine. It provides a simple, intuitive way to create dynamic user interfaces with automatic reactivity and live updates.
+
+<Note>
+  Comprehensive Blaze documentation is available at the [Blaze Community Site](http://blazejs.org/guide/introduction.html).
+</Note>
+
+## Installation
+
+Blaze is included by default when you create a new Meteor app. To add it to an existing project:
+
+```bash
+meteor add blaze-html-templates
+```
+
+For reactive variables:
+
+```bash
+meteor add reactive-var
+```
+
+## Quick Start
+
+Create a Blaze app:
+
+```bash
+meteor create my-app --blaze
+```
+
+## Basic Structure
+
+Blaze uses HTML templates with special syntax for dynamic content:
+
+```html
+<head>
+  <title>My Meteor App</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+
+<body>
+  <h1>Welcome to Meteor!</h1>
+  {{> hello}}
+  {{> info}}
+</body>
+
+<template name="hello">
+  <button>Click Me</button>
+  <p>You've pressed the button {{counter}} times.</p>
+</template>
+
+<template name="info">
+  <h2>Learn Meteor!</h2>
+  <ul>
+    <li><a href="https://www.meteor.com/try" target="_blank">Do the Tutorial</a></li>
+    <li><a href="http://guide.meteor.com" target="_blank">Follow the Guide</a></li>
+  </ul>
+</template>
+```
+
+## Template Helpers and Events
+
+Add behavior to templates with JavaScript:
+
+```javascript
+import { Template } from 'meteor/templating';
+import { ReactiveVar } from 'meteor/reactive-var';
+import './main.html';
+
+Template.hello.onCreated(function helloOnCreated() {
+  // counter starts at 0
+  this.counter = new ReactiveVar(0);
+});
+
+Template.hello.helpers({
+  counter() {
+    return Template.instance().counter.get();
+  },
+});
+
+Template.hello.events({
+  'click button'(event, instance) {
+    // increment the counter when button is clicked
+    instance.counter.set(instance.counter.get() + 1);
+  },
+});
+```
+
+## Component-Based Structure
+
+Organize Blaze templates as reusable components:
+
+```
+/imports
+  /ui
+    /components
+      /hello
+        hello.html
+        hello.js
+      /info
+        info.html
+        info.js
+    /layouts
+      /body
+        body.html
+        body.js
+```
+
+### Component Example
+
+<Tabs>
+  <Tab title="hello.html">
+    ```html
+    <template name="hello">
+      <h1>Welcome to Meteor!</h1>
+      <button>Click Me</button>
+      <p>You've pressed the button {{counter}} times.</p>
+    </template>
+    ```
+  </Tab>
+  
+  <Tab title="hello.js">
+    ```javascript
+    import { Template } from 'meteor/templating';
+    import { ReactiveVar } from 'meteor/reactive-var';
+    import './hello.html';
+
+    Template.hello.onCreated(function helloOnCreated() {
+      this.counter = new ReactiveVar(0);
+    });
+
+    Template.hello.helpers({
+      counter() {
+        return Template.instance().counter.get();
+      },
+    });
+
+    Template.hello.events({
+      'click button'(event, instance) {
+        instance.counter.set(instance.counter.get() + 1);
+      },
+    });
+    ```
+  </Tab>
+</Tabs>
+
+## Working with Collections
+
+Blaze automatically reacts to data changes:
+
+<Tabs>
+  <Tab title="Template">
+    ```html
+    <template name="info">
+      <h2>Learn Meteor!</h2>
+      <ul>
+        <li>
+          <form class="info-link-add">
+            <input type="text" name="title" placeholder="Title" required>
+            <input type="url" name="url" placeholder="Url" required>
+            <input type="submit" value="Add new link">
+          </form>
+        </li>
+        {{#each links}}
+          <li><a href="{{url}}" target="_blank">{{title}}</a></li>
+        {{/each}}
+      </ul>
+    </template>
+    ```
+  </Tab>
+  
+  <Tab title="JavaScript">
+    ```javascript
+    import { Links } from '/imports/api/links/links.js';
+    import { Meteor } from 'meteor/meteor';
+    import { Template } from 'meteor/templating';
+    import './info.html';
+
+    Template.info.onCreated(function () {
+      Meteor.subscribe('links.all');
+    });
+
+    Template.info.helpers({
+      links() {
+        return Links.find({});
+      },
+    });
+
+    Template.info.events({
+      'submit .info-link-add'(event) {
+        event.preventDefault();
+        
+        const target = event.target;
+        const title = target.title.value;
+        const url = target.url.value;
+
+        Meteor.callAsync('links.insert', title, url)
+          .then(() => {
+            target.title.value = '';
+            target.url.value = '';
+          })
+          .catch((error) => {
+            alert(error.error || error.message);
+          });
+      },
+    });
+    ```
+  </Tab>
+</Tabs>
+
+## Template Lifecycle
+
+Blaze provides lifecycle callbacks for template instances:
+
+```javascript
+Template.myTemplate.onCreated(function () {
+  // Called when template instance is created
+  this.counter = new ReactiveVar(0);
+  this.autorun(() => {
+    // Reactive computation
+  });
+});
+
+Template.myTemplate.onRendered(function () {
+  // Called when template is rendered to DOM
+  this.$('input').focus();
+});
+
+Template.myTemplate.onDestroyed(function () {
+  // Called when template is removed
+  // Cleanup happens automatically for subscriptions and autorun
+});
+```
+
+## Template Syntax
+
+### Data Context
+
+```html
+<!-- Current data context -->
+<p>{{title}}</p>
+
+<!-- Nested property -->
+<p>{{user.name}}</p>
+
+<!-- Helper function -->
+<p>{{formatDate createdAt}}</p>
+```
+
+### Control Flow
+
+```html
+<!-- Conditional rendering -->
+{{#if isLoggedIn}}
+  <p>Welcome, {{username}}!</p>
+{{else}}
+  <p>Please log in.</p>
+{{/if}}
+
+<!-- Iteration -->
+{{#each tasks}}
+  <li>{{title}}</li>
+{{else}}
+  <li>No tasks found.</li>
+{{/each}}
+
+<!-- With block -->
+{{#with currentUser}}
+  <p>{{username}}</p>
+  <p>{{email}}</p>
+{{/with}}
+```
+
+### Template Inclusion
+
+```html
+<!-- Include template -->
+{{> taskItem}}
+
+<!-- Pass data context -->
+{{> taskItem task=currentTask}}
+
+<!-- Pass multiple arguments -->
+{{> userProfile user=currentUser editable=true}}
+```
+
+## Reactivity
+
+### Reactive Variables
+
+```javascript
+import { ReactiveVar } from 'meteor/reactive-var';
+
+Template.example.onCreated(function () {
+  this.searchQuery = new ReactiveVar('');
+});
+
+Template.example.helpers({
+  results() {
+    const query = Template.instance().searchQuery.get();
+    return Items.find({ name: new RegExp(query, 'i') });
+  },
+});
+
+Template.example.events({
+  'input .search'(event, instance) {
+    instance.searchQuery.set(event.target.value);
+  },
+});
+```
+
+### Reactive Dictionaries
+
+```javascript
+import { ReactiveDict } from 'meteor/reactive-dict';
+
+Template.example.onCreated(function () {
+  this.state = new ReactiveDict();
+  this.state.set('loading', false);
+  this.state.set('filter', 'all');
+});
+
+Template.example.helpers({
+  isLoading() {
+    return Template.instance().state.get('loading');
+  },
+  currentFilter() {
+    return Template.instance().state.get('filter');
+  },
+});
+```
+
+## Subscriptions
+
+```javascript
+Template.taskList.onCreated(function () {
+  // Subscribe to data
+  this.subscribe('tasks');
+  
+  // Subscribe with parameters
+  this.autorun(() => {
+    const listId = FlowRouter.getParam('listId');
+    this.subscribe('tasks', listId);
+  });
+});
+
+Template.taskList.helpers({
+  tasks() {
+    return Tasks.find({});
+  },
+  isLoading() {
+    return !Template.instance().subscriptionsReady();
+  },
+});
+```
+
+## Integration with React
+
+<Tabs>
+  <Tab title="React in Blaze">
+    Use React components inside Blaze templates:
+
+    ```bash
+    meteor add react-template-helper
+    ```
+
+    ```html
+    <template name="userDisplay">
+      <div>Hello, {{username}}</div>
+      <div>{{> React component=UserAvatar userId=_id}}</div>
+    </template>
+    ```
+
+    ```javascript
+    import UserAvatar from './UserAvatar.jsx';
+
+    Template.userDisplay.helpers({
+      UserAvatar() {
+        return UserAvatar;
+      }
+    });
+    ```
+  </Tab>
+  
+  <Tab title="Blaze in React">
+    Use Blaze templates in React components:
+
+    ```bash
+    meteor add gadicc:blaze-react-component
+    ```
+
+    ```jsx
+    import React from 'react';
+    import Blaze from 'meteor/gadicc:blaze-react-component';
+
+    const App = () => (
+      <div>
+        <Blaze template="itemsList" items={items} />
+      </div>
+    );
+    ```
+  </Tab>
+</Tabs>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use template instances">
+    Store state on template instances, not global variables:
+    
+    ```javascript
+    Template.example.onCreated(function () {
+      this.counter = new ReactiveVar(0); // Good
+    });
+    
+    // Not: let counter = 0; (Bad - shared across instances)
+    ```
+  </Accordion>
+  
+  <Accordion title="Clean up subscriptions">
+    Use `this.subscribe()` in `onCreated` for automatic cleanup:
+    
+    ```javascript
+    Template.example.onCreated(function () {
+      this.subscribe('data'); // Automatically cleaned up
+    });
+    ```
+  </Accordion>
+  
+  <Accordion title="Use autorun for reactive dependencies">
+    Wrap reactive computations in `autorun`:
+    
+    ```javascript
+    Template.example.onCreated(function () {
+      this.autorun(() => {
+        const id = Session.get('currentId');
+        this.subscribe('item', id);
+      });
+    });
+    ```
+  </Accordion>
+  
+  <Accordion title="Limit data in helpers">
+    Use `.limit()` and `.fields()` to reduce data transfer:
+    
+    ```javascript
+    Template.example.helpers({
+      recentTasks() {
+        return Tasks.find({}, { 
+          limit: 10,
+          fields: { title: 1, createdAt: 1 },
+          sort: { createdAt: -1 }
+        });
+      },
+    });
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Common Patterns
+
+### Loading States
+
+```javascript
+Template.example.onCreated(function () {
+  this.subscribe('data');
+});
+
+Template.example.helpers({
+  isLoading() {
+    return !Template.instance().subscriptionsReady();
+  },
+});
+```
+
+```html
+{{#if isLoading}}
+  <div class="loading">Loading...</div>
+{{else}}
+  {{#each items}}
+    <div>{{name}}</div>
+  {{/each}}
+{{/if}}
+```
+
+### Forms
+
+```html
+<template name="taskForm">
+  <form class="new-task">
+    <input type="text" name="title" placeholder="New task" required>
+    <button type="submit">Add Task</button>
+  </form>
+</template>
+```
+
+```javascript
+Template.taskForm.events({
+  'submit .new-task'(event) {
+    event.preventDefault();
+    
+    const title = event.target.title.value;
+    
+    Meteor.callAsync('tasks.insert', title)
+      .then(() => {
+        event.target.title.value = '';
+      })
+      .catch((error) => {
+        alert(error.message);
+      });
+  },
+});
+```
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="Blaze Guide" icon="book" href="http://blazejs.org/guide/introduction.html">
+    Comprehensive guide to Blaze templating
+  </Card>
+  <Card title="Blaze API" icon="code" href="http://blazejs.org/api/templates.html">
+    Complete API reference for Blaze
+  </Card>
+  <Card title="Blaze Tutorial" icon="graduation-cap" href="https://blaze-tutorial.meteor.com">
+    Step-by-step tutorial for building Blaze apps
+  </Card>
+  <Card title="Reactive Var" icon="atom" href="https://docs.meteor.com/api/reactive-var.html">
+    Documentation for ReactiveVar
+  </Card>
+</CardGroup>

@@ -1,0 +1,595 @@
+---
+title: Meteor Package System
+description: Understanding Meteor's modular package architecture, core packages, and Atmosphere ecosystem
+---
+
+## Overview
+
+Meteor uses a powerful package system that enables modular application development. Packages can contain JavaScript, CSS, assets, and even build plugins that extend the build system.
+
+<Note>
+  Meteor has over 140 core packages and thousands of community packages available through Atmosphere.
+</Note>
+
+## Package Types
+
+### Core Packages
+
+Core packages are maintained in the official Meteor repository at `packages/`. They are:
+
+- Released together with Meteor tool versions
+- Don't have `.versions` files (always released from checkout)
+- Located directly in `packages/` (not in subdirectories)
+
+<CodeGroup>
+```bash List Core Packages
+# From the Meteor repository root
+ls packages/
+
+# Example output:
+accounts-base/
+accounts-password/
+ddp/
+ddp-client/
+ddp-server/
+mongo/
+minimongo/
+tracker/
+reactive-var/
+...
+```
+
+```bash Using Core Packages
+# Add a core package to your app
+meteor add accounts-password
+meteor add mongo
+meteor add tracker
+```
+</CodeGroup>
+
+### Non-Core Packages
+
+Packages in `packages/non-core/` or `packages/deprecated/` are:
+
+- Not considered core packages
+- May have different release schedules
+- Often for backwards compatibility
+
+Examples: `jquery`, `coffeescript`, `less`, `mongo-decimal`
+
+### Community Packages
+
+Published to Atmosphere by the community:
+
+```bash
+meteor add username:package-name
+```
+
+### npm Packages
+
+Meteor fully supports npm packages:
+
+```bash
+meteor npm install react react-dom
+```
+
+## Package Structure
+
+Every Meteor package has a `package.js` file that defines its metadata and configuration.
+
+### Basic package.js
+
+```javascript package.js
+Package.describe({
+  name: 'myusername:mypackage',
+  version: '1.0.0',
+  summary: 'A short description of the package',
+  git: 'https://github.com/myusername/mypackage',
+  documentation: 'README.md'
+});
+
+Package.onUse(function(api) {
+  // Minimum Meteor version
+  api.versionsFrom('3.0');
+  
+  // Dependencies
+  api.use('ecmascript');
+  api.use('mongo');
+  
+  // Export symbols
+  api.export('MyAPI');
+  
+  // Add files
+  api.addFiles('mypackage.js');
+});
+
+Package.onTest(function(api) {
+  api.use('ecmascript');
+  api.use('tinytest');
+  api.use('myusername:mypackage');
+  
+  api.addFiles('mypackage-tests.js');
+});
+```
+
+### Real Example: meteor Package
+
+The core `meteor` package (`packages/meteor/package.js`):
+
+```javascript
+Package.describe({
+  summary: "Core Meteor environment",
+  version: '2.2.0',
+});
+
+Package.registerBuildPlugin({
+  name: "basicFileTypes",
+  sources: ['plugin/basic-file-types.js']
+});
+
+Package.onUse(function (api) {
+  api.use('isobuild:compiler-plugin@1.0.0');
+  api.use('core-runtime');
+
+  api.export('Meteor');
+  api.export('global');
+
+  api.addFiles('global.js', ['client', 'server']);
+  api.addFiles('client_environment.js', 'client');
+  api.addFiles('server_environment.js', 'server');
+  api.addFiles('helpers.js', ['client', 'server']);
+  api.addFiles('timers.js', ['client', 'server']);
+  // ... more files
+});
+```
+
+### Real Example: DDP Package
+
+The `ddp` package demonstrates package composition:
+
+```javascript packages/ddp/package.js
+Package.describe({
+  summary: "Meteor's latency-compensated distributed data framework",
+  version: '1.4.2',
+});
+
+Package.onUse(function (api) {
+  // Use other packages
+  api.use(['ddp-client'], ['client', 'server']);
+  api.use(['ddp-server'], 'server');
+
+  api.addAssets('ddp.d.ts', 'server');
+
+  api.export('DDP');
+  api.export('DDPServer', 'server');
+
+  // Make dependencies available to users
+  api.imply('ddp-client');
+  api.imply('ddp-server');
+});
+```
+
+## Package API
+
+The `package.js` API provides several key methods:
+
+### Package.describe
+
+Defines package metadata:
+
+```javascript
+Package.describe({
+  name: 'username:package',      // Unique identifier
+  version: '1.0.0',              // Semantic version
+  summary: 'Short description',  // Max 100 chars
+  git: 'https://...',            // Git repository
+  documentation: 'README.md'     // Docs file
+});
+```
+
+### api.use
+
+Declares dependencies:
+
+```javascript
+// Single package
+api.use('mongo');
+
+// Multiple packages
+api.use(['mongo', 'tracker', 'reactive-var']);
+
+// With version constraints
+api.use('ddp@1.4.0');
+
+// Architecture-specific
+api.use('accounts-base', 'server');
+api.use('tracker', ['client', 'server']);
+
+// Weak dependency (optional)
+api.use('jquery', { weak: true });
+```
+
+### api.imply
+
+Makes dependencies available to package users:
+
+```javascript
+// When users add your package, they also get these
+api.imply('modules');
+api.imply('ecmascript-runtime');
+api.imply('babel-runtime');
+api.imply('promise');
+```
+
+Example from `ecmascript` package:
+
+```javascript packages/ecmascript/package.js
+Package.onUse(function(api) {
+  api.use('isobuild:compiler-plugin@1.0.0');
+  api.use('react-fast-refresh');
+
+  // These packages are implied - users get them automatically
+  api.imply('modules');
+  api.imply('ecmascript-runtime');
+  api.imply('babel-runtime');
+  api.imply('promise');
+  api.imply('dynamic-import');
+});
+```
+
+### api.export
+
+Exports symbols globally:
+
+```javascript
+// Export to all architectures
+api.export('MyAPI');
+
+// Export to specific architecture
+api.export('ServerAPI', 'server');
+api.export('ClientAPI', 'client');
+
+// Export multiple symbols
+api.export(['API1', 'API2']);
+```
+
+### api.addFiles
+
+Adds source files to the package:
+
+```javascript
+// Add to all architectures
+api.addFiles('common.js');
+
+// Add to specific architectures
+api.addFiles('client.js', 'client');
+api.addFiles('server.js', 'server');
+api.addFiles('shared.js', ['client', 'server']);
+
+// Add with options
+api.addFiles('bare.js', 'client', { bare: true });
+```
+
+### api.addAssets
+
+Adds non-JS files:
+
+```javascript
+// TypeScript definitions
+api.addAssets('meteor.d.ts', 'server');
+
+// Templates, JSON, etc.
+api.addAssets('template.html', 'client');
+```
+
+## Core Package Domains
+
+Meteor's 140+ core packages are organized by functionality:
+
+### Authentication & Accounts
+
+<CardGroup cols={2}>
+  <Card title="accounts-base" icon="user">
+    Core authentication system
+    ```javascript
+    Meteor.user()
+    Meteor.userId()
+    Meteor.users
+    ```
+  </Card>
+  
+  <Card title="accounts-password" icon="key">
+    Username/password authentication
+    ```javascript
+    Accounts.createUser()
+    Meteor.loginWithPassword()
+    ```
+  </Card>
+  
+  <Card title="accounts-oauth" icon="lock">
+    OAuth integration base
+  </Card>
+  
+  <Card title="accounts-2fa" icon="shield">
+    Two-factor authentication
+  </Card>
+</CardGroup>
+
+OAuth providers: `accounts-google`, `accounts-facebook`, `accounts-github`, `accounts-twitter`, etc.
+
+### Database & Data
+
+<CardGroup cols={2}>
+  <Card title="mongo" icon="database">
+    MongoDB driver and collections
+    ```javascript
+    new Mongo.Collection('items')
+    ```
+  </Card>
+  
+  <Card title="minimongo" icon="box">
+    Client-side MongoDB implementation
+  </Card>
+  
+  <Card title="ddp-server" icon="server">
+    Server-side DDP implementation
+  </Card>
+  
+  <Card title="ddp-client" icon="laptop">
+    Client-side DDP implementation
+  </Card>
+</CardGroup>
+
+### Build & Compilation
+
+<CardGroup cols={2}>
+  <Card title="ecmascript" icon="code">
+    ES2015+ compilation via Babel
+  </Card>
+  
+  <Card title="babel-compiler" icon="hammer">
+    Babel integration for build plugins
+  </Card>
+  
+  <Card title="typescript" icon="file-code">
+    TypeScript support
+  </Card>
+  
+  <Card title="rspack" icon="box">
+    Modern bundler integration
+  </Card>
+</CardGroup>
+
+### Reactivity
+
+<CardGroup cols={2}>
+  <Card title="tracker" icon="bolt">
+    Reactive computation system
+    ```javascript
+    Tracker.autorun(() => {})
+    ```
+  </Card>
+  
+  <Card title="reactive-var" icon="database">
+    Single reactive value
+    ```javascript
+    new ReactiveVar(initialValue)
+    ```
+  </Card>
+  
+  <Card title="reactive-dict" icon="book">
+    Reactive key-value store
+    ```javascript
+    new ReactiveDict()
+    ```
+  </Card>
+  
+  <Card title="session" icon="clock">
+    Global reactive dictionary
+    ```javascript
+    Session.set('key', value)
+    ```
+  </Card>
+</CardGroup>
+
+### Web Server
+
+<CardGroup cols={2}>
+  <Card title="webapp" icon="globe">
+    HTTP server (Express-based)
+    ```javascript
+    WebApp.connectHandlers
+    ```
+  </Card>
+  
+  <Card title="autoupdate" icon="rotate">
+    Hot code push to clients
+  </Card>
+  
+  <Card title="reload" icon="refresh">
+    Client reload coordination
+  </Card>
+  
+  <Card title="server-render" icon="file">
+    Server-side rendering support
+  </Card>
+</CardGroup>
+
+## Build Plugins
+
+Packages can register build plugins that extend the build system:
+
+### Compiler Plugin
+
+```javascript
+Package.registerBuildPlugin({
+  name: 'compile-ecmascript',
+  use: ['babel-compiler', 'react-fast-refresh'],
+  sources: ['plugin.js'],
+});
+```
+
+### Plugin Types
+
+<AccordionGroup>
+  <Accordion title="Compiler Plugin">
+    Compiles source files (e.g., `.jsx`, `.ts`, `.vue`)
+    
+    ```javascript
+    Plugin.registerCompiler({
+      extensions: ['jsx'],
+      filenames: ['component.jsx']
+    }, () => new MyCompiler());
+    ```
+  </Accordion>
+  
+  <Accordion title="Minifier Plugin">
+    Minifies JavaScript and CSS
+    
+    ```javascript
+    Plugin.registerMinifier({
+      extensions: ['js']
+    }, () => new MyMinifier());
+    ```
+  </Accordion>
+  
+  <Accordion title="Linter Plugin">
+    Lints source code during build
+    
+    ```javascript
+    Plugin.registerLinter({
+      extensions: ['js']
+    }, () => new MyLinter());
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## npm Dependencies
+
+Packages can declare npm dependencies:
+
+```javascript
+Npm.depends({
+  'denque': '2.1.0',
+  '@babel/runtime': '7.20.7'
+});
+```
+
+From the `meteor` package:
+
+```javascript packages/meteor/package.js
+Npm.depends({
+  "denque": "2.1.0"
+});
+```
+
+## Package Dependencies Resolution
+
+Meteor uses a constraint solver to determine package versions:
+
+1. Reads package constraints from `.meteor/packages`
+2. Resolves compatible versions using constraint solver
+3. Writes resolved versions to `.meteor/versions`
+4. Downloads and caches packages
+
+```bash .meteor/packages
+# Direct dependencies
+meteor-base@1.5.2
+mongo@2.0.0
+reactive-var@1.0.13
+```
+
+```bash .meteor/versions
+# Fully resolved dependency tree
+allow-deny@1.1.1
+autoupdate@2.0.0
+base64@1.0.13
+binary-heap@1.0.12
+...
+```
+
+## Creating Packages
+
+### Local Package
+
+Create a package in your app:
+
+```bash
+meteor create --package username:mypackage
+```
+
+This creates:
+
+```
+packages/
+└── username:mypackage/
+    ├── package.js
+    ├── mypackage.js
+    ├── mypackage-tests.js
+    └── README.md
+```
+
+### Publishing to Atmosphere
+
+```bash
+# Login to Meteor account
+meteor login
+
+# Publish package
+meteor publish
+
+# Publish release
+meteor publish-release
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Minimize Dependencies">
+    Only depend on packages you actually need. Each dependency adds to bundle size and complexity.
+    
+    ```javascript
+    // Good - minimal dependencies
+    api.use(['ecmascript', 'mongo']);
+    
+    // Avoid - unnecessary dependencies
+    api.use(['ecmascript', 'mongo', 'jquery', 'underscore', ...]);
+    ```
+  </Accordion>
+  
+  <Accordion title="Use api.imply Carefully">
+    Only imply packages that are part of your public API:
+    
+    ```javascript
+    // Good - users need these
+    api.imply('ddp-client');
+    
+    // Avoid - internal dependency
+    api.use('some-helper');  // Not imply
+    ```
+  </Accordion>
+  
+  <Accordion title="Version Constraints">
+    Specify version constraints for stability:
+    
+    ```javascript
+    api.use('ddp@1.4.0');           // Exact version
+    api.use('mongo@2.0.0');         // Compatible updates
+    api.versionsFrom('3.0');        // Minimum Meteor version
+    ```
+  </Accordion>
+  
+  <Accordion title="Architecture Targeting">
+    Be explicit about where code runs:
+    
+    ```javascript
+    api.addFiles('server-only.js', 'server');
+    api.addFiles('client-only.js', 'client');
+    api.addFiles('shared.js', ['client', 'server']);
+    ```
+  </Accordion>
+</AccordionGroup>
+
+<Card title="Next: Isobuild" icon="hammer" href="/concepts/isobuild">
+  Learn how Meteor's build system compiles and packages your code
+</Card>

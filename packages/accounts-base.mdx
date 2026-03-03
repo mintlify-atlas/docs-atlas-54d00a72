@@ -1,0 +1,326 @@
+---
+title: accounts-base
+description: Core user account system for Meteor applications
+---
+
+The `accounts-base` package implements Meteor's foundational user account system, providing the core infrastructure for authentication and user management.
+
+## Installation
+
+```bash
+meteor add accounts-base
+```
+
+## Overview
+
+The accounts-base package provides:
+
+- User authentication and session management
+- Login/logout functionality
+- User collection management (`Meteor.users`)
+- Hooks for login/logout events
+- Integration with DDP for client-server communication
+- Support for multiple login service packages
+
+<Info>
+accounts-base is the foundation package that other authentication packages (like `accounts-password`, `accounts-google`, `accounts-facebook`) build upon.
+</Info>
+
+## Package Information
+
+- **Version**: 3.2.0
+- **Summary**: A user account system
+- **Main exports**: `Accounts`
+- **Client module**: `client_main.js`
+- **Server module**: `server_main.js`
+
+## Core API
+
+### Accounts Object
+
+The global `Accounts` object provides all account-related functionality.
+
+#### Configuration
+
+```javascript
+Accounts.config({
+  sendVerificationEmail: true,
+  forbidClientAccountCreation: false,
+  loginExpirationInDays: 90,
+  passwordResetTokenExpirationInDays: 3,
+  passwordEnrollTokenExpirationInDays: 30,
+  ambiguousErrorMessages: false,
+  bcryptRounds: 10,
+  defaultFieldSelector: { username: 1, emails: 1, profile: 1 }
+});
+```
+
+<ParamField path="sendVerificationEmail" type="boolean">
+  Automatically send verification emails to new users
+</ParamField>
+
+<ParamField path="forbidClientAccountCreation" type="boolean">
+  Prevent account creation from the client
+</ParamField>
+
+<ParamField path="loginExpirationInDays" type="number">
+  Number of days until login tokens expire
+</ParamField>
+
+<ParamField path="passwordResetTokenExpirationInDays" type="number">
+  Days until password reset tokens expire (default: 3)
+</ParamField>
+
+<ParamField path="ambiguousErrorMessages" type="boolean">
+  Return generic error messages to prevent user enumeration
+</ParamField>
+
+### User Management
+
+#### Meteor.users Collection
+
+The `Meteor.users` collection stores all user accounts:
+
+```javascript
+// Find a user
+const user = await Meteor.users.findOneAsync({ username: 'alice' });
+
+// User document structure
+{
+  _id: "userId123",
+  username: "alice",
+  emails: [
+    { address: "alice@example.com", verified: true }
+  ],
+  profile: {
+    name: "Alice Smith"
+  },
+  services: {
+    password: { /* password hash data */ },
+    resume: { loginTokens: [...] }
+  },
+  createdAt: new Date()
+}
+```
+
+### Client-Side Methods
+
+#### Current User
+
+```javascript
+// Get current user (reactive)
+const user = Meteor.user();
+
+// Get current user ID (reactive)
+const userId = Meteor.userId();
+
+// Check login status (reactive)
+const isLoggedIn = !!Meteor.userId();
+```
+
+<Info>
+These methods are reactive and will trigger re-runs when the login state changes.
+</Info>
+
+#### Login State
+
+```javascript
+// Check if login methods are ready
+const ready = Meteor.loggingIn();
+
+// Wait for user data to load
+Tracker.autorun(() => {
+  if (!Meteor.userId() && !Meteor.loggingIn()) {
+    console.log('User is logged out');
+  }
+});
+```
+
+### Server-Side Methods
+
+#### Login Handlers
+
+```javascript
+// Register a custom login handler
+Accounts.registerLoginHandler('custom', async (loginRequest) => {
+  if (!loginRequest.customToken) {
+    return undefined; // Don't handle
+  }
+
+  // Validate the token
+  const user = await validateCustomToken(loginRequest.customToken);
+  
+  if (!user) {
+    throw new Meteor.Error('invalid-token', 'Invalid custom token');
+  }
+
+  return { userId: user._id };
+});
+```
+
+#### Validation Hooks
+
+```javascript
+// Validate new user creation
+Accounts.validateNewUser((user) => {
+  // Check email domain
+  if (user.emails && user.emails[0]) {
+    const email = user.emails[0].address;
+    if (!email.endsWith('@company.com')) {
+      throw new Meteor.Error('invalid-email', 
+        'Only company emails allowed');
+    }
+  }
+  return true;
+});
+
+// Validate login attempts
+Accounts.validateLoginAttempt((attempt) => {
+  // Reject if user is not active
+  if (attempt.user && !attempt.user.active) {
+    throw new Meteor.Error('user-inactive', 'Account is inactive');
+  }
+  return true;
+});
+```
+
+### Lifecycle Hooks
+
+#### onLogin / onLogout
+
+```javascript
+// Run code on user login
+Accounts.onLogin((loginInfo) => {
+  console.log('User logged in:', loginInfo.user._id);
+  console.log('Connection:', loginInfo.connection.id);
+  
+  // Update last login time
+  Meteor.users.updateAsync(loginInfo.user._id, {
+    $set: { lastLogin: new Date() }
+  });
+});
+
+// Run code on user logout
+Accounts.onLogout((logoutInfo) => {
+  console.log('User logged out:', logoutInfo.user._id);
+});
+
+// Run code on failed login
+Accounts.onLoginFailure((failureInfo) => {
+  console.log('Login failed:', failureInfo.error.reason);
+});
+```
+
+### URL Generators (Server)
+
+```javascript
+// Customize email verification URL
+Accounts.urls.verifyEmail = (token, extraParams) => {
+  return `https://myapp.com/verify-email/${token}?${extraParams}`;
+};
+
+// Customize password reset URL
+Accounts.urls.resetPassword = (token, extraParams) => {
+  return `https://myapp.com/reset-password/${token}`;
+};
+
+// Customize enrollment URL
+Accounts.urls.enrollAccount = (token, extraParams) => {
+  return `https://myapp.com/enroll/${token}`;
+};
+```
+
+## Dependencies
+
+The accounts-base package uses:
+
+- `ecmascript` - ES2015+ support
+- `ddp` - Client-server communication
+- `ddp-rate-limiter` - Rate limiting for security
+- `mongo` - User collection storage
+- `tracker` - Reactive updates (client)
+- `reactive-var` - Reactive variables (client)
+- `localstorage` - Token persistence (client)
+- `check` - Input validation (server)
+- `random` - Token generation
+- `callback-hook` - Lifecycle hooks
+
+## Related Packages
+
+<CardGroup cols={2}>
+  <Card title="accounts-password" icon="key" href="/packages/accounts-password">
+    Password-based authentication
+  </Card>
+  <Card title="accounts-oauth" icon="lock" href="#">
+    OAuth integration base
+  </Card>
+  <Card title="accounts-ui" icon="user" href="#">
+    Drop-in login UI components
+  </Card>
+  <Card title="accounts-2fa" icon="shield" href="#">
+    Two-factor authentication
+  </Card>
+</CardGroup>
+
+## Example: Custom User Fields
+
+```javascript
+// Server: Allow custom fields during user creation
+Accounts.onCreateUser((options, user) => {
+  if (options.profile) {
+    user.profile = options.profile;
+  }
+  
+  // Add custom fields
+  user.organizationId = options.organizationId;
+  user.role = 'user';
+  user.createdAt = new Date();
+  
+  return user;
+});
+
+// Client: Create user with custom fields
+Accounts.createUser({
+  email: 'user@example.com',
+  password: 'password123',
+  profile: { name: 'John Doe' },
+  organizationId: 'org123'
+}, (error) => {
+  if (error) {
+    console.error('Account creation failed:', error);
+  } else {
+    console.log('Account created successfully');
+  }
+});
+```
+
+## Security Best Practices
+
+<Warning>
+Never publish sensitive user data to the client. Use field selectors to limit published fields.
+</Warning>
+
+```javascript
+// Server: Publish only safe user fields
+Meteor.publish('userData', function() {
+  if (!this.userId) {
+    return this.ready();
+  }
+  
+  return Meteor.users.find(
+    { _id: this.userId },
+    { fields: { 
+      username: 1, 
+      'emails.address': 1,
+      'emails.verified': 1,
+      profile: 1,
+      role: 1
+    }}
+  );
+});
+```
+
+## Source Code
+
+The package source is available in the Meteor repository:
+- [packages/accounts-base](https://github.com/meteor/meteor/tree/devel/packages/accounts-base)

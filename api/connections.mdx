@@ -1,0 +1,409 @@
+---
+title: 'DDP Connections'
+description: 'Distributed Data Protocol (DDP) connection management'
+---
+
+# DDP Connections API
+
+DDP (Distributed Data Protocol) is Meteor's protocol for sending data over WebSockets. These APIs allow you to manage connections and create multi-server applications.
+
+Source: `packages/ddp-client/common/livedata_connection.js`
+
+## DDP.connect()
+
+Connect to another Meteor server and return a connection object.
+
+**Locus:** Anywhere
+
+<ParamField body="url" type="string" required>
+  URL of another Meteor application to connect to.
+</ParamField>
+
+<ParamField body="options" type="object">
+  Optional connection options.
+</ParamField>
+
+<ResponseField name="reloadWithOutstanding" type="boolean">
+  Whether to reload if there are outstanding methods. Default: false.
+</ResponseField>
+
+<ResponseField name="headers" type="object">
+  Extra headers to send on the WebSocket connection (server-to-server DDP only).
+</ResponseField>
+
+<ResponseField name="retry" type="boolean">
+  Whether to automatically retry on connection failures. Default: true.
+</ResponseField>
+
+<ResponseField name="onDDPVersionNegotiationFailure" type="function">
+  Callback when version negotiation fails.
+</ResponseField>
+
+```javascript
+import { DDP } from 'meteor/ddp-client';
+
+// Connect to another Meteor server
+const remoteConnection = DDP.connect('http://example.com');
+
+// With options
+const connection = DDP.connect('https://api.example.com', {
+  retry: true,
+  headers: {
+    'X-API-Key': 'secret-key'
+  }
+});
+```
+
+## Connection Object
+
+The connection object returned by `DDP.connect()` has the same API as `Meteor` on the client:
+
+### connection.subscribe()
+
+Subscribe to a publication on the remote server.
+
+```javascript
+const handle = remoteConnection.subscribe('posts', { limit: 10 });
+
+if (handle.ready()) {
+  console.log('Remote data loaded');
+}
+```
+
+### connection.call() / connection.callAsync()
+
+Call a method on the remote server.
+
+```javascript
+// Callback style
+remoteConnection.call('insertPost', title, content, (error, result) => {
+  if (error) {
+    console.error('Remote method failed:', error);
+  } else {
+    console.log('Post created:', result);
+  }
+});
+
+// Async style
+try {
+  const postId = await remoteConnection.callAsync(
+    'insertPost',
+    title,
+    content
+  );
+  console.log('Post created:', postId);
+} catch (error) {
+  console.error('Failed:', error);
+}
+```
+
+### connection.apply() / connection.applyAsync()
+
+Call a method with an array of arguments.
+
+```javascript
+const args = [title, content, tags];
+
+await remoteConnection.applyAsync('insertPost', args, {
+  wait: true
+});
+```
+
+### connection.status()
+
+Get the current connection status. A reactive data source.
+
+**Returns:** Object with status information
+
+<ResponseField name="connected" type="boolean">
+  True if currently connected to the server.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Connection status: "connected", "connecting", "failed", "waiting", or "offline".
+</ResponseField>
+
+<ResponseField name="retryCount" type="number">
+  Number of reconnection attempts made.
+</ResponseField>
+
+<ResponseField name="retryTime" type="number">
+  Estimated time of next reconnection attempt.
+</ResponseField>
+
+<ResponseField name="reason" type="string">
+  If failed, description of why the connection failed.
+</ResponseField>
+
+```javascript
+const status = remoteConnection.status();
+
+if (status.connected) {
+  console.log('Connected to remote server');
+} else {
+  console.log('Status:', status.status);
+  if (status.retryTime) {
+    console.log('Retrying at:', new Date(status.retryTime));
+  }
+}
+
+// Reactive usage
+Tracker.autorun(() => {
+  const status = remoteConnection.status();
+  console.log('Connection status changed:', status.status);
+});
+```
+
+### connection.reconnect()
+
+Force an immediate reconnection attempt.
+
+```javascript
+remoteConnection.reconnect();
+```
+
+### connection.disconnect()
+
+Disconnect from the server.
+
+```javascript
+remoteConnection.disconnect();
+```
+
+### connection.close()
+
+Permanently close the connection.
+
+```javascript
+remoteConnection.close();
+```
+
+### connection.userId()
+
+Get the user ID on this connection. A reactive data source.
+
+```javascript
+const userId = remoteConnection.userId();
+if (userId) {
+  console.log('Logged in on remote connection:', userId);
+}
+```
+
+## Using Remote Collections
+
+Access collections from a remote server:
+
+```javascript
+import { Mongo } from 'meteor/mongo';
+
+// Create connection to remote server
+const remoteConnection = DDP.connect('https://api.example.com');
+
+// Create collection using remote connection
+const RemotePosts = new Mongo.Collection('posts', {
+  connection: remoteConnection
+});
+
+// Subscribe to data from remote server
+remoteConnection.subscribe('posts');
+
+// Query remote collection
+const posts = RemotePosts.find().fetch();
+console.log('Posts from remote server:', posts);
+
+// Insert into remote collection
+RemotePosts.insert({ 
+  title: 'Hello Remote World',
+  content: 'Posted via DDP connection'
+});
+```
+
+## Server-to-Server Connections
+
+Connect Meteor servers to each other:
+
+```javascript
+// Server A: Expose methods
+Meteor.methods({
+  'serverA.getData'() {
+    return SomeCollection.find().fetch();
+  }
+});
+
+// Server B: Connect to Server A
+if (Meteor.isServer) {
+  const serverA = DDP.connect('http://server-a.example.com', {
+    headers: {
+      'X-Server-Key': process.env.SERVER_KEY
+    }
+  });
+  
+  // Call method on Server A
+  Meteor.methods({
+    async 'getDataFromServerA'() {
+      return await serverA.callAsync('serverA.getData');
+    }
+  });
+}
+```
+
+## Connection Lifecycle Events
+
+Listen to connection events:
+
+```javascript
+// On the default connection (Meteor.connection)
+Meteor.connection._stream.on('reset', () => {
+  console.log('Connection reset');
+});
+
+Meteor.connection._stream.on('disconnect', () => {
+  console.log('Disconnected from server');
+});
+
+// On custom connection
+remoteConnection._stream.on('message', (message) => {
+  console.log('Received message:', message);
+});
+```
+
+## DDP.onReconnect()
+
+Register a callback to be called on reconnect.
+
+```javascript
+DDP.onReconnect((conn) => {
+  console.log('Reconnected to server');
+  
+  // Re-fetch data or reset state
+  if (conn === Meteor.connection) {
+    console.log('Main connection reconnected');
+  }
+});
+```
+
+## Meteor.onConnection() (Server)
+
+Register a callback to be called when a new DDP connection is made to the server.
+
+**Locus:** Server
+
+<ParamField body="callback" type="function" required>
+  The function to call when a new DDP connection is established.
+</ParamField>
+
+```javascript
+Meteor.onConnection((connection) => {
+  console.log('New connection:', connection.id);
+  console.log('Client address:', connection.clientAddress);
+  console.log('HTTP headers:', connection.httpHeaders);
+  
+  connection.onClose(() => {
+    console.log('Connection closed:', connection.id);
+  });
+});
+```
+
+## Connection Object Properties (Server)
+
+<ResponseField name="id" type="string">
+  Globally unique identifier for this connection.
+</ResponseField>
+
+<ResponseField name="close" type="function">
+  Close this DDP connection. The client will reconnect.
+</ResponseField>
+
+<ResponseField name="onClose" type="function">
+  Register a function to be called when this connection is closed.
+</ResponseField>
+
+<ResponseField name="clientAddress" type="string">
+  The IP address of the client.
+</ResponseField>
+
+<ResponseField name="httpHeaders" type="object">
+  HTTP headers sent by the client in the initial WebSocket handshake.
+</ResponseField>
+
+## Multi-Server Architecture Example
+
+```javascript
+// API Server (server/main.js)
+import { Meteor } from 'meteor/meteor';
+
+Meteor.methods({
+  'api.getUsers'() {
+    return Meteor.users.find({}, {
+      fields: { username: 1, emails: 1 }
+    }).fetch();
+  },
+  
+  'api.createUser'(userData) {
+    check(userData, Object);
+    return Accounts.createUserAsync(userData);
+  }
+});
+
+// Web Server (server/main.js)
+import { DDP } from 'meteor/ddp-client';
+
+const apiServer = DDP.connect('https://api.myapp.com', {
+  headers: {
+    'X-API-Key': Meteor.settings.apiKey
+  }
+});
+
+Meteor.methods({
+  async 'getUsers'() {
+    // Proxy to API server
+    return await apiServer.callAsync('api.getUsers');
+  },
+  
+  async 'createUser'(userData) {
+    return await apiServer.callAsync('api.createUser', userData);
+  }
+});
+
+// Client code remains the same
+Meteor.call('getUsers', (error, users) => {
+  if (!error) {
+    console.log('Users:', users);
+  }
+});
+```
+
+## Best Practices
+
+1. **Connection Pooling**: Reuse connections instead of creating new ones for each request.
+
+2. **Error Handling**: Always handle connection failures gracefully.
+
+```javascript
+const connection = DDP.connect(url);
+
+Tracker.autorun(() => {
+  const status = connection.status();
+  if (status.status === 'failed') {
+    console.error('Connection failed:', status.reason);
+    // Show error to user
+  }
+});
+```
+
+3. **Security**: Use authentication for server-to-server connections.
+
+```javascript
+const connection = DDP.connect(url, {
+  headers: {
+    'Authorization': 'Bearer ' + serverToken
+  }
+});
+```
+
+4. **Cleanup**: Close connections when no longer needed.
+
+```javascript
+// In component unmount or route leave
+remoteConnection.disconnect();
+```

@@ -1,0 +1,532 @@
+---
+title: Publications and Subscriptions
+description: Publishing data from server to client in Meteor applications
+---
+
+## Overview
+
+Publications are Meteor's way of sending data from the server to clients. They define what data clients can access and automatically keep that data synchronized in real-time through DDP (Distributed Data Protocol).
+
+## How Publications Work
+
+A publication:
+1. Runs on the server when a client subscribes
+2. Returns MongoDB cursors or uses low-level API calls
+3. Sends initial data to the client
+4. Monitors for changes and sends updates automatically
+5. Cleans up when the client unsubscribes
+
+```javascript
+// Server: Define what data to publish
+Meteor.publish('todos', function() {
+  return Todos.find({ userId: this.userId });
+});
+
+// Client: Subscribe to receive data
+Meteor.subscribe('todos');
+
+// Client: Query the local cache
+const todos = Todos.find().fetch();
+```
+
+## Defining Publications
+
+### Basic Publication
+
+```javascript
+// Server-side only
+Meteor.publish('lists.public', function() {
+  return Lists.find(
+    { public: true },
+    {
+      fields: { name: 1, description: 1, createdAt: 1 },
+      sort: { createdAt: -1 },
+      limit: 100
+    }
+  );
+});
+```
+
+### Publication with Parameters
+
+```javascript
+import { check } from 'meteor/check';
+
+Meteor.publish('todos.inList', function(listId) {
+  // Always validate parameters
+  check(listId, String);
+  
+  return Todos.find(
+    { listId },
+    { fields: { text: 1, checked: 1, createdAt: 1 } }
+  );
+});
+```
+
+### User-Specific Publications
+
+```javascript
+Meteor.publish('lists.private', function() {
+  // Check if user is logged in
+  if (!this.userId) {
+    return this.ready();
+  }
+  
+  return Lists.find(
+    { userId: this.userId },
+    { fields: Lists.publicFields }
+  );
+});
+```
+
+<Tip>
+Always call `this.ready()` when not returning a cursor to signal that initial data has been sent.
+</Tip>
+
+### Publishing Multiple Collections
+
+```javascript
+Meteor.publish('dashboard', function() {
+  if (!this.userId) {
+    return this.ready();
+  }
+  
+  return [
+    Lists.find({ userId: this.userId }),
+    Todos.find({ userId: this.userId }),
+    Statistics.find({ userId: this.userId })
+  ];
+});
+```
+
+## Publication Context
+
+Inside a publication function, `this` provides:
+
+```javascript
+Meteor.publish('example', function(param) {
+  // Current user ID
+  console.log(this.userId);
+  
+  // Connection information
+  console.log(this.connection.id);
+  console.log(this.connection.clientAddress);
+  
+  // Signal that initial data is sent
+  this.ready();
+  
+  // Add/change/remove documents manually
+  this.added('collectionName', id, fields);
+  this.changed('collectionName', id, fields);
+  this.removed('collectionName', id);
+  
+  // Clean up when subscription stops
+  this.onStop(() => {
+    console.log('Subscription stopped');
+  });
+  
+  // Check if subscription is still active
+  if (this._isDeactivated()) {
+    return;
+  }
+});
+```
+
+## Subscribing to Publications
+
+### Basic Subscription
+
+```javascript
+// Client-side
+const handle = Meteor.subscribe('lists.public');
+
+// Check if ready
+Tracker.autorun(() => {
+  if (handle.ready()) {
+    console.log('Subscription ready');
+    const lists = Lists.find().fetch();
+  }
+});
+
+// Stop subscription when done
+handle.stop();
+```
+
+### Subscription with Parameters
+
+```javascript
+const listId = '123abc';
+const handle = Meteor.subscribe('todos.inList', listId);
+```
+
+### Reactive Subscriptions in Blaze
+
+```javascript
+Template.TodoList.onCreated(function() {
+  this.autorun(() => {
+    const listId = FlowRouter.getParam('_id');
+    this.subscribe('todos.inList', listId);
+  });
+});
+
+Template.TodoList.helpers({
+  todos() {
+    return Todos.find();
+  },
+  isLoading() {
+    return !Template.instance().subscriptionsReady();
+  }
+});
+```
+
+### Subscriptions in React
+
+```javascript
+import { useTracker } from 'meteor/react-meteor-data';
+import { Todos } from '/imports/api/todos';
+
+function TodoList({ listId }) {
+  const { todos, isLoading } = useTracker(() => {
+    const handle = Meteor.subscribe('todos.inList', listId);
+    
+    return {
+      todos: Todos.find({ listId }).fetch(),
+      isLoading: !handle.ready()
+    };
+  }, [listId]);
+  
+  if (isLoading) return <div>Loading...</div>;
+  
+  return (
+    <ul>
+      {todos.map(todo => (
+        <li key={todo._id}>{todo.text}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+## Low-Level Publish API
+
+For complete control over published data:
+
+```javascript
+Meteor.publish('custom.stream', function() {
+  const self = this;
+  let counter = 0;
+  
+  // Add initial document
+  self.added('stream', 'counter', { value: counter });
+  self.ready();
+  
+  // Update every second
+  const interval = setInterval(() => {
+    counter++;
+    self.changed('stream', 'counter', { value: counter });
+  }, 1000);
+  
+  // Clean up on stop
+  self.onStop(() => {
+    clearInterval(interval);
+  });
+});
+```
+
+### Publishing from External Data Sources
+
+```javascript
+Meteor.publish('external.weather', function(city) {
+  check(city, String);
+  
+  const self = this;
+  let stopped = false;
+  
+  // Fetch from external API
+  async function updateWeather() {
+    if (stopped) return;
+    
+    try {
+      const response = await fetch(`https://api.weather.com/${city}`);
+      const data = await response.json();
+      
+      self.added('weather', city, data);
+      self.ready();
+    } catch (error) {
+      self.error(new Meteor.Error('api-error', error.message));
+    }
+  }
+  
+  updateWeather();
+  
+  // Update every 10 minutes
+  const interval = setInterval(updateWeather, 10 * 60 * 1000);
+  
+  self.onStop(() => {
+    stopped = true;
+    clearInterval(interval);
+  });
+});
+```
+
+## Security and Validation
+
+### Always Validate Parameters
+
+```javascript
+import { check, Match } from 'meteor/check';
+
+Meteor.publish('todos.search', function(query, options) {
+  check(query, String);
+  check(options, Match.Optional({
+    limit: Match.Optional(Number),
+    sort: Match.Optional(Object)
+  }));
+  
+  // Sanitize options
+  const limit = Math.min(options?.limit || 20, 100);
+  
+  return Todos.find(
+    { 
+      text: { $regex: query, $options: 'i' },
+      userId: this.userId 
+    },
+    { limit, sort: options?.sort || { createdAt: -1 } }
+  );
+});
+```
+
+### Check User Permissions
+
+```javascript
+Meteor.publish('admin.users', function() {
+  // Check if user is admin
+  if (!Roles.userIsInRole(this.userId, 'admin')) {
+    // Return empty result
+    return this.ready();
+    // Or throw error
+    // throw new Meteor.Error('not-authorized');
+  }
+  
+  return Meteor.users.find({}, {
+    fields: { emails: 1, profile: 1, roles: 1 }
+  });
+});
+```
+
+### Field Filtering
+
+<Warning>
+Never publish sensitive fields like password hashes or API tokens.
+</Warning>
+
+```javascript
+Meteor.publish('users.profile', function(userId) {
+  check(userId, String);
+  
+  return Meteor.users.find(
+    { _id: userId },
+    {
+      fields: {
+        username: 1,
+        'profile.name': 1,
+        'profile.avatar': 1,
+        // Exclude sensitive fields:
+        // services: 0,
+        // 'emails.address': 0
+      }
+    }
+  );
+});
+```
+
+## Publication Strategies
+
+Different strategies for different use cases:
+
+### SERVER_MERGE (Default)
+
+Server maintains a copy of all subscribed data:
+
+```javascript
+// Good for: Most publications
+// Pro: Efficient delta updates
+// Con: Uses server memory
+
+Meteor.publish('todos', function() {
+  return Todos.find({ userId: this.userId });
+});
+```
+
+### NO_MERGE
+
+No delta tracking, just ID tracking:
+
+```javascript
+// Good for: Single-use publications
+// Pro: Less server memory
+// Con: No delta updates
+
+Meteor.publish('logs', function() {
+  return Logs.find(
+    { userId: this.userId },
+    { 
+      strategy: 'NO_MERGE',
+      limit: 100 
+    }
+  );
+});
+```
+
+## Reactive Joins
+
+Using `reywood:publish-composite`:
+
+```javascript
+import { publishComposite } from 'meteor/reywood:publish-composite';
+
+publishComposite('lists.withTodos', function(listId) {
+  check(listId, String);
+  
+  return {
+    find() {
+      return Lists.find(
+        { _id: listId, userId: this.userId },
+        { limit: 1 }
+      );
+    },
+    children: [
+      {
+        find(list) {
+          return Todos.find({ listId: list._id });
+        }
+      },
+      {
+        find(list) {
+          return Meteor.users.find(
+            { _id: list.userId },
+            { fields: { profile: 1, username: 1 } }
+          );
+        }
+      }
+    ]
+  };
+});
+```
+
+## Counting Records
+
+Using `tmeasday:publish-counts`:
+
+```javascript
+import { Counts } from 'meteor/tmeasday:publish-counts';
+
+Meteor.publish('todos.count', function(listId) {
+  check(listId, String);
+  
+  Counts.publish(
+    this,
+    'todos.count.' + listId,
+    Todos.find({ listId })
+  );
+});
+
+// Client-side
+const count = Counts.get('todos.count.' + listId);
+```
+
+## Performance Optimization
+
+### Use Indexes
+
+```javascript
+// Ensure MongoDB indexes match publication queries
+Todos.createIndex({ userId: 1, listId: 1 });
+Todos.createIndex({ createdAt: -1 });
+
+Meteor.publish('todos.recent', function() {
+  // This query uses indexes efficiently
+  return Todos.find(
+    { userId: this.userId },
+    { sort: { createdAt: -1 }, limit: 20 }
+  );
+});
+```
+
+### Limit Published Data
+
+```javascript
+Meteor.publish('todos.paginated', function(page = 1, limit = 20) {
+  check(page, Number);
+  check(limit, Number);
+  
+  // Enforce maximum limit
+  limit = Math.min(limit, 100);
+  
+  return Todos.find(
+    { userId: this.userId },
+    {
+      sort: { createdAt: -1 },
+      limit,
+      skip: (page - 1) * limit
+    }
+  );
+});
+```
+
+### Use Field Projection
+
+```javascript
+Meteor.publish('todos.list', function() {
+  // Only send needed fields
+  return Todos.find(
+    { userId: this.userId },
+    {
+      fields: {
+        text: 1,
+        checked: 1,
+        createdAt: 1
+        // Don't send large fields like descriptions, attachments
+      }
+    }
+  );
+});
+```
+
+## Testing Publications
+
+```javascript
+import { assert } from 'chai';
+import { PublicationCollector } from 'meteor/johanbrook:publication-collector';
+import './publications';
+
+if (Meteor.isServer) {
+  describe('todos.inList', function() {
+    it('publishes todos for a list', function(done) {
+      const collector = new PublicationCollector({ userId: 'testUser' });
+      
+      collector.collect('todos.inList', 'testList', (collections) => {
+        assert.equal(collections.todos.length, 3);
+        assert.equal(collections.todos[0].listId, 'testList');
+        done();
+      });
+    });
+    
+    it('requires authentication', function(done) {
+      const collector = new PublicationCollector();
+      
+      collector.collect('todos.private', (collections) => {
+        assert.equal(collections.todos, undefined);
+        done();
+      });
+    });
+  });
+}
+```
+
+## Related Resources
+
+- [Publications API Reference](https://docs.meteor.com/api/pubsub.html)
+- [Data Loading Guide](/guides/data-loading)
+- [Security Guide](/guides/security)
+- [Methods Guide](/guides/methods)

@@ -1,0 +1,238 @@
+---
+title: Galaxy Cloud Deployment
+description: Deploy Meteor applications to Galaxy, the official managed hosting platform
+---
+
+[Galaxy Cloud](https://galaxycloud.app) is a service built specifically to run Meteor apps. It's the easiest way to operate your app with confidence and the recommended deployment option for Meteor applications.
+
+Galaxy is a distributed system that runs on cloud infrastructure. If you understand what it takes to run Meteor apps correctly and how Galaxy works, you'll come to appreciate Galaxy's value, and that it will save you a lot of time and trouble.
+
+## Features
+
+Galaxy provides comprehensive features for running production Meteor applications:
+
+- **Managed Infrastructure** - Handles all server management and scaling
+- **Multiple Regions** - Deploy to regions around the world (US, EU, Asia Pacific)
+- **Auto-Scaling** - Automatically scale based on traffic
+- **SSL/HTTPS** - Automatic SSL certificate generation and renewal via Let's Encrypt
+- **MongoDB Hosting** - Optional managed MongoDB with free tier for testing
+- **Monitoring** - Built-in monitoring for connections, resource usage, and logs
+- **Docker-Based** - Builds Docker images from your app bundle for consistent deployments
+- **App Protection** - DDoS protection and security features
+
+## Prerequisites
+
+<Steps>
+  <Step title="Create a Meteor Account">
+    You need a Meteor account to deploy your apps. If you don't have one yet, you can [sign up here](https://cloud.meteor.com/?isSignUp=true).
+    
+    With this account, you can access the package manager [Atmosphere](https://atmospherejs.com/), [Forums](https://forums.meteor.com/), and more.
+  </Step>
+  
+  <Step title="Provision MongoDB">
+    You'll need to separately provision a MongoDB database. Galaxy offers MongoDB hosting on a free plan for testing purposes, and production-ready databases that allow you to scale.
+    
+    Galaxy MongoDB URL format: `mongodb://username:<password>@org-dbname-01.mongodb.galaxy-cloud.io`
+  </Step>
+</Steps>
+
+## Configuration
+
+### Settings File
+
+Create a settings file to configure your deployment. It's a JSON file that Meteor apps can read configurations from.
+
+Create this file in a new folder called `private` in the root of your project. The `private` folder is a special directory that is not published to the client side of your app.
+
+```json private/settings.json
+{
+  "galaxy.meteor.com": {
+    "env": {
+      "MONGO_URL": "mongodb://username:password@host:port/database"
+    }
+  }
+}
+```
+
+<Note>
+Make sure to replace the MongoDB URL with your actual database connection string. Never commit credentials to version control.
+</Note>
+
+## Deploying to Galaxy
+
+<Steps>
+  <Step title="Install Dependencies">
+    Run `meteor npm install` before deploying to make sure all your dependencies are installed.
+  </Step>
+  
+  <Step title="Choose a Domain">
+    Select a subdomain to publish your app. You can use the main domain `meteorapp.com` that is free and included on any Galaxy plan.
+    
+    Example: `my-app.meteorapp.com`
+    
+    Custom domains are available starting with the Essentials plan.
+  </Step>
+  
+  <Step title="Deploy Your App">
+    Use the `meteor deploy` command with your chosen domain and settings:
+    
+    ```bash
+    DEPLOY_HOSTNAME=us-east-1.galaxy.meteor.com meteor deploy my-app.meteorapp.com --settings private/settings.json
+    ```
+    
+    For free tier with MongoDB:
+    
+    ```bash
+    meteor deploy my-app.meteorapp.com --free --mongo
+    ```
+  </Step>
+</Steps>
+
+### Deployment Output
+
+You'll see output similar to this:
+
+```bash
+Talking to Galaxy servers at https://us-east-1.galaxy-deploy.meteor.com
+Preparing to build your app...
+Preparing to upload your app...
+Uploaded app bundle for new app at my-app.meteorapp.com.
+Galaxy is building the app into a native image.
+Waiting for deployment updates from Galaxy...
+Building app image...
+Deploying app...
+You have successfully deployed the first version of your app.
+For details, visit https://galaxy.meteor.com/app/my-app.meteorapp.com
+```
+
+This process usually takes just a few minutes, but it depends on your internet speed as it's going to send your app bundle to Galaxy servers.
+
+<Info>
+Galaxy builds a new Docker image that contains your app bundle and then deploys containers using it. You can check your logs on Galaxy, including the part where Galaxy is building your Docker image and deploying it.
+</Info>
+
+## Galaxy Regions
+
+Galaxy is available in multiple regions around the world. Set the deployment region using the `DEPLOY_HOSTNAME` environment variable:
+
+- **US East** - `us-east-1.galaxy.meteor.com`
+- **EU West** - `eu-west-1.galaxy.meteor.com`
+- **Asia Pacific** - `ap-southeast-2.galaxy.meteor.com`
+
+To deploy to a different region:
+
+```bash
+DEPLOY_HOSTNAME=eu-west-1.galaxy.meteor.com meteor deploy my-app.meteorapp.com --settings private/settings.json
+```
+
+To list sites in a different region:
+
+```bash
+DEPLOY_HOSTNAME=eu-west-1.galaxy-deploy.meteor.com meteor list-sites
+```
+
+## Galaxy Dashboard
+
+After deployment, you can access the Galaxy UI to manage your applications:
+
+- **Current Dashboard**: `https://galaxy.meteor.com/app/my-app.meteorapp.com`
+- **Galaxy 2.0 (Beta)**: `https://galaxy-beta.meteor.com/<your-username>/us-east-1/apps/<your-app-name>.meteorapp.com`
+
+In the dashboard, you can:
+
+- Monitor the number of connections and resource usage
+- View application logs in real-time
+- Change settings and environment variables
+- Manage domains and SSL certificates
+- Scale your application up or down
+- View deployment history
+
+## Custom Domains
+
+You can configure custom domains for your Galaxy application. Custom domains are available starting with the Essentials plan.
+
+To set up a custom domain:
+
+1. Add the domain in the Galaxy dashboard under "Domains & Encryption"
+2. Configure your DNS settings to point to Galaxy
+3. Galaxy will automatically provision an SSL certificate via Let's Encrypt
+
+<Tip>
+Enable the "Force HTTPS" setting on a specific domain in the "Domains & Encryption" section to automatically redirect HTTP traffic to HTTPS.
+</Tip>
+
+## App Protection
+
+App Protection on Galaxy Hosting is a feature in the proxy server layer that sits in front of every request to your application. This means that all requests across servers are analyzed and measured against expected limits.
+
+This helps protect against:
+
+- **DoS attacks** - Denial of Service attempts
+- **DDoS attacks** - Distributed Denial of Service attempts
+- **Request overload** - Excessive requests that could make your app unavailable
+
+App Protection functionality, along with standard AWS protection in front of Galaxy servers, provides a greater level of security for all applications deployed to Galaxy.
+
+## Pricing Plans
+
+Galaxy offers several pricing tiers:
+
+- **Free Plan** - Perfect for testing and small projects, includes free MongoDB
+- **Essentials Plan** - For production apps with custom domains
+- **Professional Plan** - For high-traffic production apps with advanced features
+- **Enterprise Plan** - Custom solutions for large-scale applications
+
+Visit [galaxycloud.app](https://galaxycloud.app) for current pricing details.
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Settings for Configuration">
+    Store environment-specific configuration in settings files rather than hardcoding values. Never commit sensitive credentials to version control.
+  </Accordion>
+  
+  <Accordion title="Test in Staging First">
+    Use Galaxy's free tier to create a staging environment before deploying to production.
+  </Accordion>
+  
+  <Accordion title="Monitor Your App">
+    Regularly check the Galaxy dashboard for performance metrics, errors, and resource usage.
+  </Accordion>
+  
+  <Accordion title="Enable Force HTTPS">
+    Always enable Force HTTPS in production to ensure secure connections.
+  </Accordion>
+  
+  <Accordion title="Choose the Right Region">
+    Deploy to the region closest to your users for best performance.
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+### Deployment Fails
+
+- Ensure all dependencies are installed with `meteor npm install`
+- Check that your settings file is valid JSON
+- Verify your MongoDB URL is correct
+- Review deployment logs in the Galaxy dashboard
+
+### App Won't Start
+
+- Check application logs in Galaxy dashboard
+- Verify environment variables are set correctly
+- Ensure MongoDB is accessible and credentials are correct
+- Check that you're using the correct Node.js version (20.x for Meteor 3.x)
+
+### Hot Code Push Issues
+
+Make sure the `--server` flag of your `meteor build` command points to the same place as your `ROOT_URL` environment variable (or, on Galaxy, the site in `meteor deploy site`).
+
+## Additional Resources
+
+- [Galaxy Support Documentation](https://galaxy-support.meteor.com/)
+- [Galaxy MongoDB Guide](https://galaxy-support.meteor.com/en/article/mongodb-general-1syd5af/)
+- [Custom Domains Guide](https://galaxy-support.meteor.com/en/article/domains-16cijgc/)
+- [Container Environment Details](https://galaxy-support.meteor.com/en/article/container-environment-lfd6kh/)
+- [Deployment Guide](https://galaxy-support.meteor.com/en/article/deploy-to-galaxy-18gd6e2/)
+- [SSL/Encryption Guide](https://help.galaxycloud.app/en/article/encryption-pt8wbl/)

@@ -1,0 +1,771 @@
+---
+title: "Complete Tutorial: Build a To-Do App"
+description: "Learn Meteor by building a complete To-Do application with real-time updates, user authentication, filtering, and deployment."
+---
+
+## What You'll Build
+
+In this comprehensive tutorial, you'll build a fully-functional To-Do application with:
+
+- ✅ Real-time task synchronization across clients
+- ✅ User authentication and private tasks
+- ✅ Task filtering (all, active, completed)
+- ✅ Add, update, and delete operations
+- ✅ Responsive UI with React
+- ✅ Production-ready deployment
+
+<Note>
+  This tutorial follows the official Meteor React tutorial structure, adapted from the source at `v3-docs/docs/tutorials/react/`.
+</Note>
+
+## Prerequisites
+
+- Basic JavaScript and React knowledge
+- Meteor installed ([Installation Guide](/installation))
+- A code editor (VS Code, Sublime, etc.)
+
+## 1. Creating the App
+
+<Steps>
+  <Step title="Install Meteor">
+    If you haven't already:
+    
+    ```bash
+    npx meteor
+    ```
+  </Step>
+  
+  <Step title="Create Your Project">
+    The easiest way to set up Meteor with React is using the `--react` option:
+    
+    ```bash
+    meteor create simple-todos-react
+    cd simple-todos-react
+    ```
+    
+    <Info>
+      Meteor 3.4+ uses Rspack by default for faster builds and built-in Hot Module Replacement (HMR).
+    </Info>
+  </Step>
+  
+  <Step title="Start the Development Server">
+    ```bash
+    meteor
+    ```
+    
+    Your app will be available at `http://localhost:3000`.
+  </Step>
+  
+  <Step title="Create the Task Component">
+    Create `imports/ui/Task.jsx`:
+    
+    ```jsx
+    import React from 'react';
+    
+    export const Task = ({ task }) => {
+      return <li>{task.text}</li>;
+    };
+    ```
+  </Step>
+  
+  <Step title="Create Sample Tasks">
+    Add sample data to `imports/ui/App.jsx`:
+    
+    ```jsx
+    import React from 'react';
+    import { Task } from './Task';
+    
+    const tasks = [
+      { _id: 1, text: 'First Task' },
+      { _id: 2, text: 'Second Task' },
+      { _id: 3, text: 'Third Task' },
+    ];
+    
+    export const App = () => (
+      <div>
+        <h1>Welcome to Meteor!</h1>
+        <ul>
+          {tasks.map(task => (
+            <Task key={task._id} task={task} />
+          ))}
+        </ul>
+      </div>
+    );
+    ```
+  </Step>
+</Steps>
+
+## 2. Collections - Connecting to MongoDB
+
+Meteor uses MongoDB for data storage. Let's create a collection for our tasks.
+
+<Steps>
+  <Step title="Create the Tasks Collection">
+    Create `imports/api/TasksCollection.js`:
+    
+    ```javascript
+    import { Mongo } from 'meteor/mongo';
+    
+    export const TasksCollection = new Mongo.Collection('tasks');
+    ```
+    
+    <Tip>
+      This single line creates a MongoDB collection on the server and an in-memory Minimongo cache on the client.
+    </Tip>
+  </Step>
+  
+  <Step title="Initialize with Sample Data">
+    Update `server/main.js` to seed the database:
+    
+    ```javascript
+    import { Meteor } from 'meteor/meteor';
+    import { TasksCollection } from '/imports/api/TasksCollection';
+    
+    const insertTask = (taskText) =>
+      TasksCollection.insertAsync({ text: taskText });
+    
+    Meteor.startup(async () => {
+      if ((await TasksCollection.find().countAsync()) === 0) {
+        [
+          'First Task',
+          'Second Task',
+          'Third Task',
+          'Fourth Task',
+          'Fifth Task',
+          'Sixth Task',
+          'Seventh Task',
+        ].forEach(insertTask);
+      }
+    });
+    ```
+  </Step>
+  
+  <Step title="Render Collection Data">
+    Update `imports/ui/App.jsx` to use real data:
+    
+    ```jsx
+    import React from 'react';
+    import { useTracker, useSubscribe } from 'meteor/react-meteor-data';
+    import { TasksCollection } from '/imports/api/TasksCollection';
+    import { Task } from './Task';
+    
+    export const App = () => {
+      const isLoading = useSubscribe('tasks');
+      const tasks = useTracker(() => TasksCollection.find({}).fetch());
+    
+      if (isLoading()) {
+        return <div>Loading...</div>;
+      }
+    
+      return (
+        <div>
+          <h1>Welcome to Meteor!</h1>
+          <ul>
+            {tasks.map(task => (
+              <Task key={task._id} task={task} />
+            ))}
+          </ul>
+        </div>
+      );
+    };
+    ```
+    
+    <Info>
+      `useTracker` is a React hook that creates a reactive computation. When the collection changes, the component re-renders automatically.
+    </Info>
+  </Step>
+</Steps>
+
+## 3. Forms and Events
+
+Let's add the ability to create new tasks.
+
+<Steps>
+  <Step title="Create the Task Form">
+    Create `imports/ui/TaskForm.jsx`:
+    
+    ```jsx
+    import React, { useState } from 'react';
+    import { TasksCollection } from '/imports/api/TasksCollection';
+    
+    export const TaskForm = () => {
+      const [text, setText] = useState('');
+    
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+    
+        if (!text.trim()) return;
+    
+        await TasksCollection.insertAsync({
+          text: text.trim(),
+          createdAt: new Date(),
+        });
+    
+        setText('');
+      };
+    
+      return (
+        <form className="task-form" onSubmit={handleSubmit}>
+          <input
+            type="text"
+            placeholder="Type to add new tasks"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+          <button type="submit">Add Task</button>
+        </form>
+      );
+    };
+    ```
+  </Step>
+  
+  <Step title="Add Form to App">
+    Update `imports/ui/App.jsx`:
+    
+    ```jsx
+    import { TaskForm } from './TaskForm';
+    
+    export const App = () => {
+      // ... previous code
+      
+      return (
+        <div>
+          <h1>Welcome to Meteor!</h1>
+          <TaskForm />
+          <ul>
+            {tasks.map(task => (
+              <Task key={task._id} task={task} />
+            ))}
+          </ul>
+        </div>
+      );
+    };
+    ```
+  </Step>
+</Steps>
+
+<Info>
+  Notice you're calling `insertAsync` directly from the client. This works during development, but we'll secure it later with methods and publications.
+</Info>
+
+## 4. Update and Remove Tasks
+
+<Steps>
+  <Step title="Add Toggle and Delete Functions">
+    Update `imports/ui/Task.jsx`:
+    
+    ```jsx
+    import React from 'react';
+    import { TasksCollection } from '/imports/api/TasksCollection';
+    
+    export const Task = ({ task }) => {
+      const toggleChecked = async () => {
+        await TasksCollection.updateAsync(task._id, {
+          $set: { isChecked: !task.isChecked }
+        });
+      };
+    
+      const deleteTask = async () => {
+        await TasksCollection.removeAsync(task._id);
+      };
+    
+      return (
+        <li>
+          <input
+            type="checkbox"
+            checked={!!task.isChecked}
+            onChange={toggleChecked}
+          />
+          <span>{task.text}</span>
+          <button onClick={deleteTask}>&times;</button>
+        </li>
+      );
+    };
+    ```
+  </Step>
+</Steps>
+
+## 5. Styling Your App
+
+<Steps>
+  <Step title="Add CSS">
+    Create `client/main.css` (or update if it exists):
+    
+    ```css
+    body {
+      font-family: sans-serif;
+      background-color: #315481;
+      background-image: linear-gradient(to bottom, #315481, #918e82 100%);
+      background-attachment: fixed;
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 0;
+      margin: 0;
+      font-size: 14px;
+    }
+    
+    h1 {
+      font-size: 1.5em;
+      margin: 0;
+      margin-bottom: 10px;
+      display: inline-block;
+      margin-right: 1em;
+    }
+    
+    .task-form {
+      margin-bottom: 10px;
+      display: flex;
+    }
+    
+    .task-form input {
+      flex-grow: 1;
+      box-sizing: border-box;
+      padding: 10px 0;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid #555;
+      color: white;
+      font-size: 1em;
+    }
+    
+    .task-form button {
+      padding: 10px 20px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    
+    ul {
+      margin: 0;
+      padding: 0;
+      background: white;
+    }
+    
+    li {
+      position: relative;
+      list-style: none;
+      padding: 15px;
+      border-bottom: #eee solid 1px;
+      display: flex;
+      align-items: center;
+    }
+    
+    li input[type="checkbox"] {
+      margin-right: 10px;
+    }
+    
+    li span {
+      flex-grow: 1;
+    }
+    
+    li.checked span {
+      text-decoration: line-through;
+      color: #888;
+    }
+    
+    li button {
+      background-color: #d9534f;
+      color: white;
+      border: none;
+      padding: 5px 10px;
+      cursor: pointer;
+    }
+    ```
+  </Step>
+  
+  <Step title="Apply CSS Classes">
+    Update `imports/ui/Task.jsx` to add the `checked` class:
+    
+    ```jsx
+    <li className={task.isChecked ? 'checked' : ''}>
+      {/* ... */}
+    </li>
+    ```
+  </Step>
+</Steps>
+
+## 6. Filter Tasks
+
+<Steps>
+  <Step title="Add Filter State">
+    Update `imports/ui/App.jsx` to add filtering:
+    
+    ```jsx
+    import React, { useState } from 'react';
+    
+    export const App = () => {
+      const [hideCompleted, setHideCompleted] = useState(false);
+      
+      const isLoading = useSubscribe('tasks');
+      
+      const tasks = useTracker(() => {
+        const filter = hideCompleted ? { isChecked: { $ne: true } } : {};
+        return TasksCollection.find(filter, { sort: { createdAt: -1 } }).fetch();
+      });
+      
+      const pendingTasksCount = useTracker(() =>
+        TasksCollection.find({ isChecked: { $ne: true } }).count()
+      );
+      
+      if (isLoading()) {
+        return <div>Loading...</div>;
+      }
+      
+      return (
+        <div>
+          <h1>Todo List ({pendingTasksCount})</h1>
+          
+          <label>
+            <input
+              type="checkbox"
+              checked={hideCompleted}
+              onChange={() => setHideCompleted(!hideCompleted)}
+            />
+            Hide Completed Tasks
+          </label>
+          
+          <TaskForm />
+          
+          <ul>
+            {tasks.map(task => (
+              <Task key={task._id} task={task} />
+            ))}
+          </ul>
+        </div>
+      );
+    };
+    ```
+  </Step>
+</Steps>
+
+## 7. Adding User Accounts
+
+<Steps>
+  <Step title="Add Account Packages">
+    ```bash
+    meteor add accounts-password
+    meteor npm install --save bcrypt
+    ```
+  </Step>
+  
+  <Step title="Create Default User">
+    Update `server/main.js`:
+    
+    ```javascript
+    import { Accounts } from 'meteor/accounts-base';
+    
+    const SEED_USERNAME = 'meteorite';
+    const SEED_PASSWORD = 'password';
+    
+    Meteor.startup(async () => {
+      if (!(await Accounts.findUserByUsername(SEED_USERNAME))) {
+        await Accounts.createUser({
+          username: SEED_USERNAME,
+          password: SEED_PASSWORD,
+        });
+      }
+      
+      // ... rest of startup code
+    });
+    ```
+  </Step>
+  
+  <Step title="Create Login Form">
+    Create `imports/ui/LoginForm.jsx`:
+    
+    ```jsx
+    import { Meteor } from 'meteor/meteor';
+    import React, { useState } from 'react';
+    
+    export const LoginForm = () => {
+      const [username, setUsername] = useState('');
+      const [password, setPassword] = useState('');
+    
+      const submit = (e) => {
+        e.preventDefault();
+        Meteor.loginWithPassword(username, password);
+      };
+    
+      return (
+        <form onSubmit={submit} className="login-form">
+          <input
+            type="text"
+            placeholder="Username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <button type="submit">Log In</button>
+        </form>
+      );
+    };
+    ```
+  </Step>
+  
+  <Step title="Add Authentication to App">
+    Update `imports/ui/App.jsx`:
+    
+    ```jsx
+    import { Meteor } from 'meteor/meteor';
+    import { useTracker } from 'meteor/react-meteor-data';
+    import { LoginForm } from './LoginForm';
+    
+    export const App = () => {
+      const user = useTracker(() => Meteor.user());
+      
+      if (!user) {
+        return (
+          <div>
+            <h1>Please Log In</h1>
+            <LoginForm />
+          </div>
+        );
+      }
+      
+      const logout = () => Meteor.logout();
+      
+      // ... rest of component
+      
+      return (
+        <div>
+          <h1>
+            Todo List ({pendingTasksCount})
+            <button onClick={logout}>Logout</button>
+          </h1>
+          {/* ... */}
+        </div>
+      );
+    };
+    ```
+  </Step>
+  
+  <Step title="Associate Tasks with Users">
+    Update the `TaskForm` to include user ID:
+    
+    ```jsx
+    await TasksCollection.insertAsync({
+      text: text.trim(),
+      createdAt: new Date(),
+      userId: Meteor.userId(),
+    });
+    ```
+  </Step>
+</Steps>
+
+## 8. Security with Methods and Publications
+
+<Warning>
+  By default, Meteor apps have `insecure` and `autopublish` packages that allow full client access to the database. Remove these before deploying!
+</Warning>
+
+<Steps>
+  <Step title="Remove Insecure Packages">
+    ```bash
+    meteor remove insecure autopublish
+    ```
+  </Step>
+  
+  <Step title="Create Methods">
+    Create `imports/api/tasksMethods.js`:
+    
+    ```javascript
+    import { Meteor } from 'meteor/meteor';
+    import { check } from 'meteor/check';
+    import { TasksCollection } from './TasksCollection';
+    
+    Meteor.methods({
+      async 'tasks.insert'(text) {
+        check(text, String);
+        
+        if (!this.userId) {
+          throw new Meteor.Error('Not authorized.');
+        }
+        
+        return await TasksCollection.insertAsync({
+          text,
+          createdAt: new Date(),
+          userId: this.userId,
+        });
+      },
+      
+      async 'tasks.remove'(taskId) {
+        check(taskId, String);
+        
+        const task = await TasksCollection.findOneAsync(taskId);
+        
+        if (task.userId !== this.userId) {
+          throw new Meteor.Error('Not authorized.');
+        }
+        
+        return await TasksCollection.removeAsync(taskId);
+      },
+      
+      async 'tasks.setIsChecked'(taskId, isChecked) {
+        check(taskId, String);
+        check(isChecked, Boolean);
+        
+        const task = await TasksCollection.findOneAsync(taskId);
+        
+        if (task.userId !== this.userId) {
+          throw new Meteor.Error('Not authorized.');
+        }
+        
+        return await TasksCollection.updateAsync(taskId, {
+          $set: { isChecked }
+        });
+      },
+    });
+    ```
+    
+    Import this file in `server/main.js`:
+    ```javascript
+    import '/imports/api/tasksMethods';
+    ```
+  </Step>
+  
+  <Step title="Create Publications">
+    Create `imports/api/tasksPublications.js`:
+    
+    ```javascript
+    import { Meteor } from 'meteor/meteor';
+    import { TasksCollection } from './TasksCollection';
+    
+    Meteor.publish('tasks', function publishTasks() {
+      return TasksCollection.find({ userId: this.userId });
+    });
+    ```
+    
+    Import in `server/main.js`:
+    ```javascript
+    import '/imports/api/tasksPublications';
+    ```
+  </Step>
+  
+  <Step title="Update Components to Use Methods">
+    Update `imports/ui/TaskForm.jsx`:
+    
+    ```jsx
+    await Meteor.callAsync('tasks.insert', text.trim());
+    ```
+    
+    Update `imports/ui/Task.jsx`:
+    
+    ```jsx
+    const toggleChecked = async () => {
+      await Meteor.callAsync('tasks.setIsChecked', task._id, !task.isChecked);
+    };
+    
+    const deleteTask = async () => {
+      await Meteor.callAsync('tasks.remove', task._id);
+    };
+    ```
+  </Step>
+</Steps>
+
+## 9. Deploying Your App
+
+<Tabs>
+  <Tab title="Galaxy (Recommended)">
+    [Galaxy](https://galaxycloud.app) is Meteor's official hosting platform:
+    
+    ```bash
+    # Set your settings
+    DEPLOY_HOSTNAME=galaxy.meteor.com meteor deploy myapp.meteorapp.com --settings settings.json
+    ```
+    
+    <Info>
+      Galaxy provides MongoDB hosting, SSL certificates, and automatic scaling.
+    </Info>
+  </Tab>
+  
+  <Tab title="Build for Custom Server">
+    Build a production bundle:
+    
+    ```bash
+    meteor build ../output --architecture os.linux.x86_64
+    ```
+    
+    This creates a tarball you can deploy to any Node.js server.
+  </Tab>
+</Tabs>
+
+## What You've Learned
+
+Congratulations! You've built a complete Meteor application with:
+
+<CardGroup cols={2}>
+  <Card title="Collections" icon="database">
+    MongoDB integration with reactive queries
+  </Card>
+  
+  <Card title="Real-Time Sync" icon="sync">
+    Automatic data synchronization across clients
+  </Card>
+  
+  <Card title="Authentication" icon="lock">
+    User accounts with secure login
+  </Card>
+  
+  <Card title="Security" icon="shield">
+    Methods and publications for data access control
+  </Card>
+  
+  <Card title="React Integration" icon="react">
+    useTracker and useSubscribe hooks
+  </Card>
+  
+  <Card title="CRUD Operations" icon="database">
+    Create, read, update, and delete tasks
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Testing" icon="vial" href="https://docs.meteor.com/tutorials/testing/testing.html">
+    Add tests with TinyTest or Jest
+  </Card>
+  
+  <Card title="Deployment" icon="rocket" href="https://docs.meteor.com/tutorials/deployment/deployment.html">
+    Deploy to production with Galaxy or your own server
+  </Card>
+  
+  <Card title="Advanced Patterns" icon="code" href="https://docs.meteor.com/tutorials/methods/methods.html">
+    Learn advanced methods, optimistic UI, and more
+  </Card>
+  
+  <Card title="Mobile Apps" icon="mobile" href="https://docs.meteor.com/commandline.html#meteoraddplatform">
+    Build iOS and Android apps with Cordova
+  </Card>
+</CardGroup>
+
+## Additional Resources
+
+<Info>
+  **Source Code**: The complete tutorial code is available on GitHub:
+  - [Rspack bundler version](https://github.com/meteor/meteor3-react/tree/3.4-rspack)
+  - [Meteor bundler version](https://github.com/meteor/meteor3-react/tree/3.4-meteor)
+</Info>
+
+<CardGroup cols={3}>
+  <Card title="Forums" icon="comments" href="https://forums.meteor.com">
+    Community support and discussions
+  </Card>
+  
+  <Card title="Discord" icon="discord" href="https://discord.gg/hZkTCaVjmT">
+    Real-time chat with developers
+  </Card>
+  
+  <Card title="API Docs" icon="book" href="https://docs.meteor.com">
+    Complete API reference
+  </Card>
+</CardGroup>

@@ -1,0 +1,624 @@
+---
+title: Reactivity with Tracker
+description: Understanding Meteor's transparent reactive programming system powered by Tracker
+---
+
+## What is Tracker?
+
+Tracker is an incredibly tiny (~1k) but incredibly powerful library for **transparent reactive programming** in JavaScript. It gives you much of the power of Functional Reactive Programming (FRP) without requiring you to rewrite your program as a data flow graph.
+
+<Note>
+  Tracker is essentially a simple convention that lets reactive data sources (like your database) talk to reactive data consumers (such as a live-updating HTML templating library) without the application code in between having to be involved.
+</Note>
+
+## The Big Idea
+
+With Tracker, you write normal JavaScript code, but it automatically reruns when data changes:
+
+<CodeGroup>
+```javascript Without Reactivity
+let temperature = 22;
+
+function displayTemp() {
+  console.log(`Temperature: ${temperature}°C`);
+}
+
+displayTemp();  // Temperature: 22°C
+
+temperature = 23;
+// Nothing happens - need to call displayTemp() again
+```
+
+```javascript With Tracker
+import { Tracker } from 'meteor/tracker';
+import { ReactiveVar } from 'meteor/reactive-var';
+
+const temperature = new ReactiveVar(22);
+
+Tracker.autorun(() => {
+  console.log(`Temperature: ${temperature.get()}°C`);
+});
+// Prints: Temperature: 22°C
+
+temperature.set(23);
+// Automatically prints: Temperature: 23°C
+```
+</CodeGroup>
+
+## Core API
+
+### Tracker.autorun
+
+Runs a function now and reruns it whenever dependencies change:
+
+```javascript
+import { Tracker } from 'meteor/tracker';
+import { Meteor } from 'meteor/meteor';
+
+const handle = Tracker.autorun(() => {
+  const user = Meteor.user();
+  console.log('Current user:', user?.username);
+});
+
+// Stop the autorun
+handle.stop();
+```
+
+<Info>
+  The function is called once immediately, then again whenever any reactive data source it accessed changes.
+</Info>
+
+### Tracker.Dependency
+
+Creates a reactive data source:
+
+```javascript
+import { Tracker } from 'meteor/tracker';
+
+class Temperature {
+  constructor() {
+    this._temp = 22;
+    this._dep = new Tracker.Dependency();
+  }
+  
+  get() {
+    this._dep.depend();  // Register as dependency
+    return this._temp;
+  }
+  
+  set(value) {
+    this._temp = value;
+    this._dep.changed();  // Notify dependents
+  }
+}
+
+const temp = new Temperature();
+
+Tracker.autorun(() => {
+  console.log('Temperature:', temp.get());
+});
+// Prints: Temperature: 22
+
+temp.set(23);
+// Prints: Temperature: 23
+```
+
+### Tracker.Computation
+
+Represents a reactive computation:
+
+```javascript
+const computation = Tracker.autorun((comp) => {
+  console.log('First run:', comp.firstRun);
+  
+  const user = Meteor.user();
+  
+  if (!user) {
+    comp.stop();  // Stop this computation
+  }
+});
+
+// Check if stopped
+if (computation.stopped) {
+  console.log('Computation has stopped');
+}
+```
+
+### Tracker.nonreactive
+
+Run code without tracking dependencies:
+
+```javascript
+Tracker.autorun(() => {
+  const reactive = reactiveVar.get();  // Tracked
+  
+  const nonReactive = Tracker.nonreactive(() => {
+    return otherReactiveVar.get();  // NOT tracked
+  });
+  
+  console.log(reactive, nonReactive);
+});
+```
+
+## Reactive Data Sources
+
+Meteor provides several built-in reactive data sources:
+
+### ReactiveVar
+
+A single reactive value:
+
+```javascript
+import { ReactiveVar } from 'meteor/reactive-var';
+
+const counter = new ReactiveVar(0);
+
+Tracker.autorun(() => {
+  console.log('Counter:', counter.get());
+});
+
+counter.set(counter.get() + 1);
+// Prints: Counter: 1
+```
+
+### ReactiveDict
+
+A reactive key-value store:
+
+```javascript
+import { ReactiveDict } from 'meteor/reactive-dict';
+
+const state = new ReactiveDict();
+
+state.set('username', 'alice');
+state.set('isAdmin', false);
+
+Tracker.autorun(() => {
+  console.log('User:', state.get('username'));
+  console.log('Admin:', state.get('isAdmin'));
+});
+
+state.set('isAdmin', true);
+// Prints: User: alice
+//         Admin: true
+```
+
+### Session (Global ReactiveDict)
+
+```javascript
+import { Session } from 'meteor/session';
+
+Session.set('selectedItem', 'item-1');
+
+Tracker.autorun(() => {
+  const selected = Session.get('selectedItem');
+  console.log('Selected:', selected);
+});
+```
+
+<Warning>
+  Session is global and persists across hot code pushes. Use with caution in larger apps - prefer component-level ReactiveDict or ReactiveVar.
+</Warning>
+
+### Minimongo Collections
+
+Database queries are reactive:
+
+```javascript
+import { Mongo } from 'meteor/mongo';
+
+const Tasks = new Mongo.Collection('tasks');
+
+Tracker.autorun(() => {
+  const tasks = Tasks.find({ completed: false }).fetch();
+  console.log('Pending tasks:', tasks.length);
+});
+
+// Insert a task - autorun reruns automatically
+Tasks.insert({ text: 'Learn Tracker', completed: false });
+```
+
+### Meteor.user() and Meteor.userId()
+
+Current user is reactive:
+
+```javascript
+Tracker.autorun(() => {
+  const user = Meteor.user();
+  if (user) {
+    console.log('Logged in as:', user.username);
+  } else {
+    console.log('Not logged in');
+  }
+});
+```
+
+## Real-World Example: Temperature Monitor
+
+Here's the complete temperature example from Tracker's README:
+
+```javascript
+import { Tracker } from 'meteor/tracker';
+
+// Simulate a thermometer
+class Thermometer {
+  constructor() {
+    this._celsius = 22;
+    this._dep = new Tracker.Dependency();
+    
+    // Simulate temperature changes
+    setInterval(() => {
+      this._celsius += (Math.random() - 0.5) * 0.2;
+      this._dep.changed();
+    }, 60000);
+  }
+  
+  read() {
+    this._dep.depend();
+    return this._celsius;
+  }
+}
+
+const thermometer = new Thermometer();
+
+// Make it reactive
+const currentTemperatureCelsius = () => {
+  return thermometer.read();
+};
+
+// Derived reactive function
+const currentTemperatureFahrenheit = () => {
+  return currentTemperatureCelsius() * 9/5 + 32;
+};
+
+// Use it reactively
+const handle = Tracker.autorun(() => {
+  console.log(
+    'The current temperature is',
+    currentTemperatureFahrenheit().toFixed(1),
+    'F'
+  );
+});
+
+// Prints immediately:
+// The current temperature is 71.6 F
+
+// Prints again every minute when temperature changes
+```
+
+## Integration with UI Libraries
+
+### React
+
+Use `useTracker` hook:
+
+```javascript
+import { useTracker } from 'meteor/react-meteor-data';
+import { Meteor } from 'meteor/meteor';
+
+function UserProfile() {
+  const user = useTracker(() => Meteor.user());
+  
+  if (!user) {
+    return <div>Please log in</div>;
+  }
+  
+  return <div>Welcome, {user.username}!</div>;
+}
+```
+
+### Blaze
+
+Blaze templates are automatically reactive:
+
+```handlebars
+<template name="taskList">
+  <h2>Tasks</h2>
+  <ul>
+    {{#each tasks}}
+      <li>{{text}}</li>
+    {{/each}}
+  </ul>
+</template>
+```
+
+```javascript
+import { Template } from 'meteor/templating';
+
+Template.taskList.helpers({
+  tasks() {
+    // This is automatically reactive
+    return Tasks.find({}, { sort: { createdAt: -1 } });
+  }
+});
+```
+
+### Vue
+
+Use `autorun` in lifecycle hooks:
+
+```javascript
+export default {
+  data() {
+    return {
+      user: null
+    };
+  },
+  
+  mounted() {
+    this.$autorun(() => {
+      this.user = Meteor.user();
+    });
+  }
+};
+```
+
+## Advanced Patterns
+
+### Computation Lifecycle
+
+```javascript
+const computation = Tracker.autorun((comp) => {
+  console.log('Running computation');
+  
+  // Called on first run only
+  if (comp.firstRun) {
+    console.log('First run - setting up...');
+  }
+  
+  // Called when invalidated
+  comp.onInvalidate(() => {
+    console.log('About to rerun');
+  });
+  
+  // Called when stopped
+  comp.onStop(() => {
+    console.log('Computation stopped - cleanup');
+  });
+  
+  const data = ReactiveSource.get();
+  
+  if (someCondition) {
+    comp.stop();
+  }
+});
+```
+
+### Async Autoruns (Meteor 3.x)
+
+Meteor 3 supports async autoruns:
+
+```javascript
+const computation = Tracker.autorun(async () => {
+  const userId = Meteor.userId();
+  
+  if (userId) {
+    const profile = await fetch(`/api/profile/${userId}`);
+    console.log('Profile loaded:', profile);
+  }
+});
+
+// Wait for first run to complete
+await computation;
+```
+
+### Throttling Reruns
+
+```javascript
+import { Tracker } from 'meteor/tracker';
+import { ReactiveVar } from 'meteor/reactive-var';
+
+const searchQuery = new ReactiveVar('');
+let timeoutId;
+
+Tracker.autorun(() => {
+  const query = searchQuery.get();
+  
+  // Debounce expensive operation
+  clearTimeout(timeoutId);
+  timeoutId = setTimeout(() => {
+    Tracker.nonreactive(() => {
+      performSearch(query);
+    });
+  }, 300);
+});
+```
+
+### Selective Invalidation
+
+```javascript
+class SmartCollection {
+  constructor() {
+    this._items = [];
+    this._lengthDep = new Tracker.Dependency();
+    this._contentDep = new Tracker.Dependency();
+  }
+  
+  get length() {
+    this._lengthDep.depend();
+    return this._items.length;
+  }
+  
+  get items() {
+    this._contentDep.depend();
+    return this._items;
+  }
+  
+  push(item) {
+    this._items.push(item);
+    this._lengthDep.changed();   // Only invalidate length
+    this._contentDep.changed();  // And content
+  }
+  
+  updateItem(index, item) {
+    this._items[index] = item;
+    this._contentDep.changed();  // Only invalidate content
+  }
+}
+```
+
+## How It Works Internally
+
+Here's the actual implementation from `packages/tracker/tracker.js`:
+
+### Dependency Implementation
+
+```javascript
+Tracker.Dependency = class Dependency {
+  constructor() {
+    this._dependentsById = Object.create(null);
+  }
+
+  depend(computation) {
+    if (!computation) {
+      if (!Tracker.active)
+        return false;
+      computation = Tracker.currentComputation;
+    }
+    
+    var id = computation._id;
+    if (!(id in this._dependentsById)) {
+      this._dependentsById[id] = computation;
+      computation.onInvalidate(() => {
+        delete this._dependentsById[id];
+      });
+      return true;
+    }
+    return false;
+  }
+
+  changed() {
+    for (var id in this._dependentsById)
+      this._dependentsById[id].invalidate();
+  }
+};
+```
+
+### Global State
+
+```javascript
+// From tracker.js:17-33
+Tracker.active = false;
+Tracker.currentComputation = null;
+
+var nextId = 1;
+var pendingComputations = [];
+var willFlush = false;
+var inFlush = false;
+var inCompute = false;
+```
+
+### Autorun Implementation
+
+```javascript
+Tracker.autorun = function (f, options = {}) {
+  if (typeof f !== 'function')
+    throw new Error('Tracker.autorun requires a function argument');
+
+  constructingComputation = true;
+  var c = new Tracker.Computation(
+    f, 
+    Tracker.currentComputation, 
+    options.onError
+  );
+
+  if (Tracker.active)
+    Tracker.onInvalidate(function () {
+      c.stop();
+    });
+
+  return c;
+};
+```
+
+## Performance Considerations
+
+<AccordionGroup>
+  <Accordion title="Minimize Autoruns">
+    Each autorun has overhead. Combine related logic:
+    
+    ```javascript
+    // Good - one autorun
+    Tracker.autorun(() => {
+      const user = Meteor.user();
+      const tasks = Tasks.find({ userId: user?._id }).fetch();
+      updateUI(user, tasks);
+    });
+    
+    // Less optimal - two autoruns
+    Tracker.autorun(() => {
+      const user = Meteor.user();
+      updateUserUI(user);
+    });
+    Tracker.autorun(() => {
+      const tasks = Tasks.find().fetch();
+      updateTasksUI(tasks);
+    });
+    ```
+  </Accordion>
+  
+  <Accordion title="Use Specific Queries">
+    Reactive queries only invalidate when results change:
+    
+    ```javascript
+    // Good - only reruns when completed tasks change
+    const completed = Tasks.find({ completed: true }).count();
+    
+    // Less optimal - reruns on any task change
+    const all = Tasks.find().fetch();
+    const completed = all.filter(t => t.completed).length;
+    ```
+  </Accordion>
+  
+  <Accordion title="Stop Unused Computations">
+    Clean up when done:
+    
+    ```javascript
+    const handle = Tracker.autorun(() => {
+      // ...
+    });
+    
+    // Later
+    handle.stop();
+    ```
+    
+    In React:
+    ```javascript
+    useEffect(() => {
+      const handle = Tracker.autorun(() => {
+        // ...
+      });
+      
+      return () => handle.stop();
+    }, []);
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Debugging Reactivity
+
+```javascript
+// Log when computation runs
+Tracker.autorun((comp) => {
+  console.log('Computation', comp._id, 'running');
+  
+  comp.onInvalidate(() => {
+    console.log('Computation', comp._id, 'invalidated');
+  });
+  
+  // Your reactive code
+  const data = MyCollection.find().fetch();
+});
+
+// Check if in reactive context
+if (Tracker.active) {
+  console.log('Inside reactive computation');
+}
+
+// Force flush pending computations
+Tracker.flush();
+```
+
+<Card title="Next: DDP Protocol" icon="network-wired" href="/concepts/ddp">
+  Learn about Meteor's real-time data protocol
+</Card>

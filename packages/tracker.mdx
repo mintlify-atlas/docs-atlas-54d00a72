@@ -1,0 +1,631 @@
+---
+title: Tracker
+description: Transparent reactive programming for JavaScript
+---
+
+Tracker is Meteor's incredibly lightweight (~1k) library for transparent reactive programming. It allows reactive data sources to automatically notify reactive consumers without manual event handling.
+
+## Installation
+
+```bash
+meteor add tracker
+```
+
+<Info>
+Tracker is included by default in Meteor applications and is the foundation of Meteor's reactivity system.
+</Info>
+
+## Overview
+
+Tracker provides:
+
+- **Reactive Computations** - Automatically rerun code when dependencies change
+- **Dependency Tracking** - Transparent detection of data dependencies
+- **Automatic Cleanup** - Proper disposal of reactive contexts
+- **Minimal Overhead** - Nearly zero cost when not in reactive context
+- **Simple API** - Just a few functions to learn
+
+## Package Information
+
+- **Version**: 1.3.4
+- **Summary**: Dependency tracker to allow reactive callbacks
+- **Exports**: `Tracker`, `Deps` (deprecated alias)
+- **Size**: ~1KB minified
+
+## Core Concepts
+
+### Reactive Context
+
+A reactive context is created by `Tracker.autorun`. Code inside this context automatically tracks dependencies:
+
+```javascript
+// This creates a reactive context
+Tracker.autorun(() => {
+  // Any reactive data source accessed here is tracked
+  const user = Meteor.user();
+  console.log('Current user:', user?.username);
+});
+// Prints immediately, then again whenever Meteor.user() changes
+```
+
+### Dependencies
+
+Reactive data sources use `Tracker.Dependency` to notify computations:
+
+```javascript
+const temperature = 72;
+const tempDep = new Tracker.Dependency();
+
+function getTemperature() {
+  tempDep.depend(); // Register as dependency
+  return temperature;
+}
+
+// Later, when temperature changes:
+temperature = 75;
+tempDep.changed(); // Notify all dependent computations
+```
+
+## API Reference
+
+### Tracker.autorun()
+
+Run a function now and rerun whenever dependencies change:
+
+```javascript
+const computation = Tracker.autorun(() => {
+  const count = Session.get('counter');
+  console.log('Count:', count);
+});
+
+// Stop the computation
+computation.stop();
+```
+
+<ParamField path="runFunc" type="function" required>
+  Function to run in reactive context. Receives the Computation object.
+</ParamField>
+
+<ParamField path="options" type="object">
+  Optional configuration
+</ParamField>
+
+<ParamField path="options.onError" type="function">
+  Error handler called if the computation throws
+</ParamField>
+
+### Advanced autorun
+
+```javascript
+Tracker.autorun((computation) => {
+  // Access computation object
+  console.log('First run?', computation.firstRun);
+  
+  const data = ReactiveVar.get();
+  
+  if (computation.firstRun) {
+    // Setup code that only runs once
+    console.log('Initializing...');
+  }
+  
+  // Stop self after 10 runs
+  if (runCount++ > 10) {
+    computation.stop();
+  }
+}, {
+  onError: (error) => {
+    console.error('Computation error:', error);
+  }
+});
+```
+
+### Tracker.Computation
+
+Represents a reactive computation:
+
+```javascript
+const computation = Tracker.autorun(() => {
+  // Computation code
+});
+
+// Properties
+computation.stopped    // Boolean: has been stopped?
+computation.invalidated // Boolean: has been invalidated?
+computation.firstRun   // Boolean: is this the first run?
+
+// Methods
+computation.stop()          // Stop this computation
+computation.invalidate()    // Invalidate and rerun
+computation.onInvalidate(callback) // Run callback on invalidate
+computation.onStop(callback)       // Run callback when stopped
+```
+
+#### Lifecycle Callbacks
+
+```javascript
+const computation = Tracker.autorun((comp) => {
+  const data = getData();
+  
+  // Run when computation invalidates
+  comp.onInvalidate(() => {
+    console.log('About to rerun');
+    cleanup();
+  });
+  
+  // Run when computation stops
+  comp.onStop(() => {
+    console.log('Computation stopped');
+    finalCleanup();
+  });
+});
+```
+
+### Tracker.Dependency
+
+Create reactive data sources:
+
+```javascript
+class ReactiveCounter {
+  constructor() {
+    this._value = 0;
+    this._dep = new Tracker.Dependency();
+  }
+  
+  get() {
+    this._dep.depend(); // Register dependency
+    return this._value;
+  }
+  
+  set(value) {
+    this._value = value;
+    this._dep.changed(); // Notify dependents
+  }
+  
+  increment() {
+    this.set(this._value + 1);
+  }
+}
+
+const counter = new ReactiveCounter();
+
+Tracker.autorun(() => {
+  console.log('Counter:', counter.get());
+});
+// Prints: Counter: 0
+
+counter.increment();
+// Prints: Counter: 1
+```
+
+#### Dependency Methods
+
+```javascript
+const dep = new Tracker.Dependency();
+
+dep.depend()           // Register current computation as dependent
+dep.depend(computation) // Register specific computation
+dep.changed()          // Invalidate all dependent computations
+dep.hasDependents()    // Check if any computations depend on this
+```
+
+### Tracker.active
+
+Check if currently in reactive context:
+
+```javascript
+function reactiveFunction() {
+  if (Tracker.active) {
+    // We're inside a reactive computation
+    dependency.depend();
+  }
+  return someValue;
+}
+```
+
+### Tracker.currentComputation
+
+Get the current computation:
+
+```javascript
+function myReactiveSource() {
+  const computation = Tracker.currentComputation;
+  
+  if (computation) {
+    // Register with current computation
+    dependency.depend();
+    
+    computation.onInvalidate(() => {
+      console.log('This computation is invalidating');
+    });
+  }
+  
+  return value;
+}
+```
+
+### Tracker.nonreactive()
+
+Run code without establishing dependencies:
+
+```javascript
+Tracker.autorun(() => {
+  const reactive = Session.get('reactive');
+  
+  // This won't create a dependency
+  const nonReactive = Tracker.nonreactive(() => {
+    return Session.get('other');
+  });
+  
+  console.log(reactive, nonReactive);
+  // Only reruns when 'reactive' changes, not 'other'
+});
+```
+
+### Tracker.flush()
+
+Flush pending reactive updates immediately:
+
+```javascript
+// Invalidate computation
+someDependency.changed();
+
+// Normally, rerun happens later
+// Force immediate rerun:
+Tracker.flush();
+```
+
+<Warning>
+Use `Tracker.flush()` sparingly. It can cause performance issues and unexpected behavior.
+</Warning>
+
+### Tracker.afterFlush()
+
+Run callback after next flush:
+
+```javascript
+Tracker.afterFlush(() => {
+  console.log('All reactive updates complete');
+});
+```
+
+## Patterns and Best Practices
+
+### Pattern: Reactive Data Source
+
+```javascript
+class ReactiveValue {
+  constructor(initialValue) {
+    this._value = initialValue;
+    this._dep = new Tracker.Dependency();
+  }
+  
+  get() {
+    if (Tracker.active) {
+      this._dep.depend();
+    }
+    return this._value;
+  }
+  
+  set(newValue) {
+    if (this._value !== newValue) {
+      this._value = newValue;
+      this._dep.changed();
+    }
+  }
+}
+```
+
+### Pattern: Cleanup Resources
+
+```javascript
+Tracker.autorun((computation) => {
+  const data = fetchData();
+  const subscription = subscribeToUpdates(data.id);
+  
+  // Clean up subscription when computation reruns or stops
+  computation.onInvalidate(() => {
+    subscription.stop();
+  });
+  
+  updateUI(data);
+});
+```
+
+### Pattern: Conditional Dependencies
+
+```javascript
+Tracker.autorun(() => {
+  const mode = Session.get('mode');
+  
+  if (mode === 'admin') {
+    // Only depends on adminData when in admin mode
+    const adminData = Session.get('adminData');
+    renderAdmin(adminData);
+  } else {
+    const userData = Session.get('userData');
+    renderUser(userData);
+  }
+});
+```
+
+### Pattern: Throttling Reactivity
+
+```javascript
+let throttleTimeout = null;
+const throttledDep = new Tracker.Dependency();
+
+function throttledChanged() {
+  if (!throttleTimeout) {
+    throttleTimeout = setTimeout(() => {
+      throttledDep.changed();
+      throttleTimeout = null;
+    }, 1000); // Update at most once per second
+  }
+}
+```
+
+### Pattern: Preventing Infinite Loops
+
+```javascript
+let updating = false;
+
+Tracker.autorun(() => {
+  if (updating) return;
+  
+  const value = reactiveSource.get();
+  
+  updating = true;
+  processValue(value); // Might trigger reactivity
+  updating = false;
+});
+```
+
+## Integration with Meteor
+
+### Reactive Data Sources in Meteor
+
+Many Meteor APIs are Tracker-aware:
+
+```javascript
+Tracker.autorun(() => {
+  // All of these are reactive:
+  const user = Meteor.user();           // Current user
+  const userId = Meteor.userId();       // Current user ID
+  const loggingIn = Meteor.loggingIn(); // Login state
+  const status = Meteor.status();       // Connection status
+  
+  const todos = Todos.find().fetch();   // Database query
+  const count = Todos.find().count();   // Query count
+  
+  const setting = Session.get('key');   // Session variable
+  
+  console.log('Something changed!');
+});
+```
+
+### Using with Blaze Templates
+
+Blaze automatically creates reactive contexts:
+
+```handlebars
+<!-- template.html -->
+<template name="todoCount">
+  <p>You have {{count}} todos</p>
+</template>
+```
+
+```javascript
+// template.js
+Template.todoCount.helpers({
+  count() {
+    // Automatically reactive - no Tracker.autorun needed
+    return Todos.find({ userId: Meteor.userId() }).count();
+  }
+});
+```
+
+### Using with React
+
+```javascript
+import { useTracker } from 'meteor/react-meteor-data';
+
+function TodoList() {
+  const { todos, loading } = useTracker(() => {
+    const handle = Meteor.subscribe('todos');
+    
+    return {
+      todos: Todos.find({}, { sort: { createdAt: -1 } }).fetch(),
+      loading: !handle.ready()
+    };
+  }, []);
+  
+  if (loading) return <div>Loading...</div>;
+  
+  return (
+    <ul>
+      {todos.map(todo => <li key={todo._id}>{todo.text}</li>)}
+    </ul>
+  );
+}
+```
+
+## Example: Temperature Monitor
+
+```javascript
+// Create a reactive temperature source
+class Thermometer {
+  constructor() {
+    this._temperature = 20;
+    this._dep = new Tracker.Dependency();
+    
+    // Simulate temperature changes
+    setInterval(() => {
+      this.setTemperature(this._temperature + Math.random() - 0.5);
+    }, 1000);
+  }
+  
+  read() {
+    this._dep.depend();
+    return this._temperature;
+  }
+  
+  setTemperature(temp) {
+    this._temperature = temp;
+    this._dep.changed();
+  }
+}
+
+const thermometer = new Thermometer();
+
+// Helper function (reactive)
+function temperatureInFahrenheit() {
+  return thermometer.read() * 9/5 + 32;
+}
+
+// Monitor temperature
+const computation = Tracker.autorun(() => {
+  const tempF = temperatureInFahrenheit();
+  console.log(`Temperature: ${tempF.toFixed(1)}°F`);
+  
+  if (tempF < 32) {
+    console.log('⚠️ Below freezing!');
+  }
+});
+
+// Stop monitoring after 10 seconds
+setTimeout(() => computation.stop(), 10000);
+```
+
+## Example: Smart Cache
+
+```javascript
+class ReactiveCache {
+  constructor() {
+    this._cache = new Map();
+    this._deps = new Map();
+  }
+  
+  get(key) {
+    // Create dependency for this key if needed
+    if (!this._deps.has(key)) {
+      this._deps.set(key, new Tracker.Dependency());
+    }
+    
+    // Register dependency
+    this._deps.get(key).depend();
+    
+    return this._cache.get(key);
+  }
+  
+  set(key, value) {
+    this._cache.set(key, value);
+    
+    // Invalidate only computations watching this key
+    const dep = this._deps.get(key);
+    if (dep) {
+      dep.changed();
+    }
+  }
+  
+  delete(key) {
+    this._cache.delete(key);
+    const dep = this._deps.get(key);
+    if (dep) {
+      dep.changed();
+    }
+  }
+}
+
+const cache = new ReactiveCache();
+
+// Watch specific cache key
+Tracker.autorun(() => {
+  const value = cache.get('user:123');
+  console.log('User 123:', value);
+});
+
+// This triggers the autorun
+cache.set('user:123', { name: 'Alice' });
+
+// This doesn't (different key)
+cache.set('user:456', { name: 'Bob' });
+```
+
+## Debugging
+
+### Log Computation Lifecycle
+
+```javascript
+Tracker.autorun((computation) => {
+  console.log('Running computation', computation);
+  
+  computation.onInvalidate(() => {
+    console.log('Computation invalidated');
+  });
+  
+  computation.onStop(() => {
+    console.log('Computation stopped');
+  });
+  
+  // Your reactive code
+  const data = getData();
+});
+```
+
+### Find Reactive Dependencies
+
+```javascript
+let dependencies = [];
+
+const originalDepend = Tracker.Dependency.prototype.depend;
+Tracker.Dependency.prototype.depend = function() {
+  dependencies.push(this);
+  return originalDepend.apply(this, arguments);
+};
+
+Tracker.autorun(() => {
+  dependencies = [];
+  myReactiveFunction();
+  console.log('Dependencies:', dependencies.length);
+});
+```
+
+## Performance Tips
+
+<Tip>
+**Minimize computation work** - Keep autoruns lightweight
+</Tip>
+
+<Tip>
+**Use Tracker.nonreactive()** - Avoid unnecessary dependencies
+</Tip>
+
+<Tip>
+**Stop unused computations** - Always call `.stop()` when done
+</Tip>
+
+<Tip>
+**Batch updates** - Invalidate multiple dependencies before flushing
+</Tip>
+
+## Related Packages
+
+<CardGroup cols={2}>
+  <Card title="reactive-var" icon="arrow-rotate-right" href="/packages/reactive-var">
+    Single reactive values
+  </Card>
+  <Card title="reactive-dict" icon="book" href="/packages/reactive-dict">
+    Reactive key-value dictionaries
+  </Card>
+  <Card title="mongo" icon="database" href="/packages/mongo">
+    Reactive database queries
+  </Card>
+  <Card title="session" icon="memory" href="#">
+    Global reactive state (deprecated)
+  </Card>
+</CardGroup>
+
+## Source Code
+
+- [packages/tracker](https://github.com/meteor/meteor/tree/devel/packages/tracker)
+- [Tracker Manual](https://github.com/meteor/meteor/blob/devel/packages/tracker/README.md)

@@ -1,0 +1,457 @@
+---
+title: Bundler
+description: Technical documentation of Meteor's bundler and build process
+---
+
+# Bundler
+
+The bundler is responsible for combining packages and application code into deployable bundles for different architectures.
+
+## Bundle Format
+
+Meteor creates site archives (`.star` files) with this structure:
+
+### star.json
+
+```javascript
+// From bundler.js header comments
+{
+  format: "site-archive-pre1",
+  builtBy: "Meteor 0.6.0",
+  
+  programs: [
+    {
+      name: "web.browser",
+      arch: "web.browser",
+      path: "programs/web.browser"
+    },
+    {
+      name: "server",
+      arch: "os.linux.x86_64",
+      path: "programs/server"
+    }
+  ],
+  
+  plugins: [
+    {
+      name: "my-plugin",
+      arch: "os",
+      path: "programs/my-plugin/program.json"
+    }
+  ],
+  
+  meteorRelease: "METEOR@2.8.0"
+}
+```
+
+### Main Entry Point
+
+```javascript
+// From bundler.js - contents of main.js in bundles
+exports._mainJsContents = [
+  "",
+  "process.argv.splice(2, 0, 'program.json');",
+  "process.chdir(require('path').join(__dirname, 'programs', 'server'));",
+  'require("./programs/server/runtime.js")({ cachePath: process.env.METEOR_REIFY_CACHE_DIR });',
+  "require('./programs/server/boot.js');",
+].join("\n");
+```
+
+## Target Architecture
+
+The bundler creates different targets for different platforms:
+
+### ClientTarget (Web)
+
+```javascript
+class ClientTarget extends Target {
+  constructor(options) {
+    super(options);
+    
+    // CSS files in load order
+    this.css = [];
+    
+    // HTML segments for head/body
+    this.head = [];
+    this.body = [];
+    
+    if (!archinfo.matches(this.arch, 'web')) {
+      throw new Error('ClientTarget targeting something that isn\'t a client?');
+    }
+  }
+}
+```
+
+### Server Target
+
+Server targets use the JsImage format:
+
+```javascript
+class JsImage {
+  constructor() {
+    // Files to load at startup
+    this.jsToLoad = [];
+    
+    // Node modules to include
+    this.nodeModulesDirectories = Object.create(null);
+    
+    // Target architecture
+    this.arch = null;
+  }
+}
+```
+
+## Web Program Format
+
+```javascript
+// program.json for web targets
+{
+  format: "web-program-pre1",
+  
+  manifest: [
+    {
+      path: "app/template.myapp.js",
+      where: "client",
+      type: "js",
+      cacheable: true,
+      url: "/1a2b3c4d5e.js?hash=xyz",
+      size: 12345,
+      hash: "abc123...",
+      sri: "sha512-...",
+      sourceMap: "app/template.myapp.js.map"
+    },
+    {
+      where: "internal",
+      type: "head",
+      path: "head.html",
+      hash: "def456..."
+    }
+  ]
+}
+```
+
+## Build Process
+
+The `make()` method orchestrates the entire build:
+
+```javascript
+// From bundler.js - Target.prototype.make
+async make({packages, minifyMode, addCacheBusters, minifiers, onJsOutputFiles}) {
+  buildmessage.assertInCapture();
+  
+  await buildmessage.enterJob("building for " + this.arch, async () => {
+    // 1. Determine load order
+    await this._determineLoadOrder({ packages });
+    
+    // 2. Run compiler plugins
+    const sourceBatches = await this._runCompilerPlugins({
+      minifiers,
+      minifyMode,
+    });
+    
+    // 3. Link JavaScript and emit resources
+    await this._emitResources(sourceBatches, onJsOutputFiles);
+    
+    // 4. Add direct Cordova dependencies
+    await this._addDirectCordovaDependencies();
+    
+    // 5. Minify (client targets only)
+    if (this instanceof ClientTarget) {
+      if (minifiersByExt.js) {
+        await this.minifyJs(minifiersByExt.js, minifyMode);
+      }
+      if (minifiersByExt.css) {
+        await this.minifyCss(minifiersByExt.css, minifyMode);
+      }
+    }
+    
+    // 6. Rewrite source maps
+    this.rewriteSourceMaps();
+    
+    // 7. Add cache busters
+    if (addCacheBusters) {
+      this._addCacheBusters("js");
+      this._addCacheBusters("css");
+    }
+  });
+}
+```
+
+## Load Order Determination
+
+The bundler uses a two-phase topological sort:
+
+```javascript
+async _determineLoadOrder({packages}) {
+  // Phase 1: Which unibuilds will be used?
+  const usedUnibuilds = {};
+  const addToGetsUsed = async function (unibuild) {
+    if (_.has(usedUnibuilds, unibuild.id)) return;
+    
+    usedUnibuilds[unibuild.id] = unibuild;
+    if (unibuild.kind === 'main') {
+      this.usedPackages[unibuild.pkg.name] = true;
+    }
+    
+    await compiler.eachUsedUnibuild({
+      dependencies: unibuild.uses,
+      arch: this.arch,
+      skipDebugOnly: this.buildMode === 'production',
+      skipProdOnly: this.buildMode !== 'production',
+      skipTestOnly: this.buildMode !== 'test',
+    }, addToGetsUsed);
+  }.bind(this);
+  
+  // Phase 2: In what order should we load them?
+  const needed = _.clone(usedUnibuilds);
+  const onStack = {};
+  
+  const add = async function (unibuild) {
+    if (!_.has(needed, unibuild.id)) return;
+    
+    // Check for circular dependencies
+    var processUnibuild = async function (usedUnibuild) {
+      if (onStack[usedUnibuild.id]) {
+        buildmessage.error(
+          "circular dependency between packages " +
+          unibuild.pkg.name + " and " + usedUnibuild.pkg.name
+        );
+        return;
+      }
+      onStack[usedUnibuild.id] = true;
+      await add(usedUnibuild);
+      delete onStack[usedUnibuild.id];
+    };
+    
+    await compiler.eachUsedUnibuild({
+      dependencies: unibuild.uses,
+      arch: this.arch,
+      skipUnordered: true,
+      acceptableWeakPackages: this.usedPackages,
+    }, processUnibuild);
+    
+    this.unibuilds.push(unibuild);
+    delete needed[unibuild.id];
+  }.bind(this);
+}
+```
+
+## File Management
+
+The bundler uses a `File` class to represent resources:
+
+```javascript
+class File {
+  constructor(options) {
+    // Source path on disk
+    this.sourcePath = options.sourcePath;
+    
+    // Target path in bundle
+    this.targetPath = null;
+    
+    // URL for serving over HTTP
+    this.url = null;
+    this.urlPrefix = "";
+    
+    // Cache control
+    this.cacheable = options.cacheable || false;
+    
+    // Hot Module Replacement
+    this.replaceable = options.replaceable;
+    
+    // Node modules for this file
+    this.nodeModulesDirectories = Object.create(null);
+    
+    // Server assets
+    this.assets = null;
+    
+    // Contents and hashing
+    this._contents = options.data || null;
+    this._hash = null;
+    this._sri = null;
+  }
+  
+  hash() {
+    if (!this._hash) {
+      const hashes = [String(File._salt())];
+      if (typeof this._inputHash === "string") {
+        hashes.push(this._inputHash);
+      }
+      if (!this._skipSri) {
+        hashes.push(this.sri());
+      }
+      this._hash = watch.sha1(...hashes);
+    }
+    return this._hash;
+  }
+  
+  sri() {
+    if (!this._sri && !this._skipSri) {
+      this._sri = watch.sha512(this.contents());
+    }
+    return this._sri;
+  }
+}
+```
+
+## Cache Busting
+
+```javascript
+addCacheBuster() {
+  if (!this.url) {
+    throw new Error("File must have a URL");
+  }
+  if (this.cacheable) {
+    return; // Already has hash in URL
+  }
+  if (/\?/.test(this.url)) {
+    throw new Error("URL already has a query string");
+  }
+  this.url += "?hash=" + this.hash();
+  this.cacheable = true;
+}
+
+setUrlToHash(fileAndUrlSuffix, urlSuffix) {
+  urlSuffix = urlSuffix || "";
+  this.url = this.urlPrefix + "/" +
+    this.hash() + fileAndUrlSuffix + urlSuffix;
+  this.cacheable = true;
+  this.targetPath = this.hash() + fileAndUrlSuffix;
+}
+```
+
+## Source Map Rewriting
+
+```javascript
+rewriteSourceMaps() {
+  const rewriteSourceMap = function (sm) {
+    if (!sm.sources) return sm;
+    
+    sm.sources = sm.sources.map(function (path) {
+      const prefix = "meteor://💻app";
+      if (path.slice(0, prefix.length) === prefix) {
+        return path;
+      }
+      // PERSONAL COMPUTER emoji ensures category is last in DevTools
+      return prefix + (path[0] === '/' ? '' : '/') + path;
+    });
+    return sm;
+  };
+  
+  this.js?.forEach(js => {
+    if (js.sourceMap) {
+      js.sourceMap = rewriteSourceMap(js.sourceMap);
+    }
+  });
+  
+  this.css?.forEach(css => {
+    if (css.sourceMap) {
+      css.sourceMap = rewriteSourceMap(css.sourceMap);
+    }
+  });
+}
+```
+
+## Minification
+
+```javascript
+async minifyJs(minifierDef, minifyMode) {
+  const staticFiles = [];
+  const dynamicFiles = [];
+  const inputHashesByJsFile = new Map;
+  
+  this.js.forEach(file => {
+    const jsf = new JsFile(file, { arch: this.arch });
+    inputHashesByJsFile.set(jsf, file.hash());
+    
+    if (file.targetPath.startsWith("dynamic/")) {
+      dynamicFiles.push(jsf);
+    } else {
+      staticFiles.push(jsf);
+    }
+  });
+  
+  var markedMinifier = buildmessage.markBoundary(
+    minifierDef.userPlugin.processFilesForBundle,
+    minifierDef.userPlugin
+  );
+  
+  await buildmessage.enterJob('minifying app code', async function () {
+    await Promise.all([
+      markedMinifier(staticFiles, { minifyMode }),
+      ...dynamicFiles.map(
+        file => markedMinifier([file], { minifyMode })
+      ),
+    ]);
+  });
+}
+```
+
+## Node Modules Handling
+
+```javascript
+class NodeModulesDirectory {
+  getPreferredBundlePath(kind) {
+    let relPath = files.pathRelative(this.sourceRoot, this.sourcePath);
+    const isApp = !this.packageName;
+    
+    if (!isApp) {
+      const relParts = relPath.split(files.pathSep);
+      const name = colonConverter.convert(
+        this.packageName.replace(/^local-test[:_]/, ""));
+      
+      // Normalize .npm/package/node_modules paths
+      if (relParts[0] === ".npm") {
+        if (relParts[1] === "devPackage") {
+          relParts.splice(0, 2, 'dev');
+        } else if (relParts[1] === "package") {
+          relParts.splice(0, 2);
+        } else if (relParts[1] === "plugin") {
+          relParts.splice(0, 3);
+        }
+      }
+      
+      if (kind === "bundle") {
+        relParts.unshift("node_modules", "meteor", name);
+      }
+      
+      relPath = files.pathJoin(...relParts);
+    }
+    
+    return files.pathJoin("npm", relPath);
+  }
+}
+```
+
+## Ignored Files
+
+```javascript
+// From bundler.js
+exports.ignoreFiles = [
+  /~$/,           // Backup files
+  /^\.#/,         // Emacs lock files
+  /^(\.meteor\/|\.git\/|Thumbs\.db|\.DS_Store\/?|Icon\r|ehthumbs\.db|\..*\.sw.|#.*#)$/,
+];
+```
+
+## Profiling
+
+Key methods are profiled for performance analysis:
+
+```javascript
+[
+  'make',
+  '_runCompilerPlugins',
+  '_emitResources',
+  'minifyJs',
+  'rewriteSourceMaps',
+].forEach((method) => {
+  Target.prototype[method] = Profile(`Target#${method}`, Target.prototype[method]);
+});
+```
+
+## Related Topics
+
+- [Isobuild](./isobuild) - The build system
+- [Compiler Plugins](./compiler-plugins) - Code transformation
+- [Build Performance](./build-performance) - Optimization strategies
